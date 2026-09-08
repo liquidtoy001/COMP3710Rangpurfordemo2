@@ -10,7 +10,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | --- | --- | ---: | --- |
 | 3.2a | ResNet-18 on CIFAR-10, >90% test accuracy | 1 | code written, not yet run |
 | 3.2b | Inference + one training epoch live during the demo | 1 | script written, not yet rehearsed |
-| 3.2c | Mixed precision, 94% at V100-360s or better | 2 | not started |
+| 3.2c | Mixed precision, 94% at V100-360s or better | 2 | first controlled run queued |
 | 4.4 | OASIS recognition tasks (VAE / UNet / GAN) | 7 | not started |
 
 ## Layout
@@ -27,6 +27,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `slurm/smoke.sh` | Five batches on a GPU node - run this before any long job |
 | `slurm/smoke_test_partition.sh` | The same check on `a100-test`, which is usually free |
 | `slurm/train.sh` | The full 30-epoch baseline run |
+| `slurm/train_amp.sh` | The same run with mixed precision, for 3.2c |
 | `slurm/demo.sh` | Batch fallback for the live run |
 | `explore_oasis.py` | Read-only probe of the OASIS dataset, before any Part 4 code |
 | `slurm/explore_oasis.sh` | Runs that probe on a CPU node |
@@ -255,6 +256,29 @@ fallback if the interactive session is lost.
 **The demonstration is given from a MacBook, from a fresh clone.** SSH access,
 the UQ VPN and `~/.ssh/config` must all be verified on that machine, not only on
 the machine the code was written on.
+
+## Queueing work in parallel
+
+GPU queue time on `comp3710` is measured in hours, so it is worth having every
+job that is *ready* in the queue at once. Ready means the code exists and has
+passed a smoke test - not that the task is on the list.
+
+`slurm/train.sh` and `slurm/train_amp.sh` can both be queued now. They differ in
+exactly one flag, `--amp`, with the same epochs, batch size, learning rate and
+seed, so the difference in wall clock and final accuracy is attributable to
+mixed precision alone. That is the first row of part 3.2c's ablation table.
+
+What is *not* worth queueing is a speculative pile of variants. Each later
+DAWNBench change - larger batch, channels-last, label smoothing, a retuned
+one-cycle - needs its own controlled run, or the table cannot say which change
+bought what.
+
+Part 4's tasks cannot be queued yet, and the blocker is not the queue: nothing
+can be written until the OASIS layout is known. That probe runs on an idle CPU
+node in seconds, so it is the next thing to do, not something to wait for.
+
+Parts 1, 2 and 3.1 need no cluster at all. LFW is about 1,300 images and trains
+on a laptop.
 
 ## Part 4: before writing any code
 
