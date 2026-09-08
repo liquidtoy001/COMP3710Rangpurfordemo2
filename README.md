@@ -42,28 +42,51 @@ Rangpur:        git pull -> sbatch -> results in logs/ and runs/
 results back:   scp
 ```
 
-## First-time setup on Rangpur
+## What this cluster actually looks like
 
-Follow `COMP3710-Rangpur.pdf` (week 2) for the Miniconda and PyTorch install.
-In summary, and noting that **the login node is a lobby, not a workshop** - do
-none of this on `login` itself:
+Confirmed with `sinfo` and `scontrol show node` on 8 Sep 2026. These facts are
+what the Slurm scripts are shaped around:
+
+| Fact | Consequence |
+| --- | --- |
+| `comp3710` holds the A100 nodes `a100-0` .. `a100-9` | one `--gres=gpu:1` per job |
+| Nodes report `CfgTRES=cpu=8,mem=1M` | **never pass `--mem`** - see below |
+| 8 cores per node, usually in `mix` state | `--cpus-per-task=4`, not 8 |
+| Home quota 17 GB (`/home/Student/s4913333`) | fine for CIFAR-10 and a few checkpoints |
+
+**The `--mem` trap.** The nodes advertise 1 MB of memory, meaning this cluster
+does not schedule on memory at all. A job asking for `--mem=16G` matches no node
+and pends forever with *"Requested node configuration is not available"*. The
+job scripts therefore carry no `--mem` directive, which is deliberate and should
+not be "fixed".
+
+Requesting all 8 cores would mean waiting for an entirely free node, and the
+A100s are normally partly allocated. Four cores lets a job share one.
+
+## Setup on Rangpur
+
+The Miniconda and PyTorch install from `COMP3710-Rangpur.pdf` (week 2) was done
+in August and does not need repeating. Verify it still works, then clone:
 
 ```bash
-# 1. Connect (UQ VPN required from off campus)
-ssh s49133336@rangpur.compute.eait.uq.edu.au
+ssh s4913333@rangpur.compute.eait.uq.edu.au     # UQ VPN required off campus
 
-# 2. Clone this repository
+source $HOME/miniconda3/bin/activate
+conda activate torch
+python -c "import torch, torchvision; print(torch.__version__, torchvision.__version__)"
+
 git clone https://github.com/liquidtoy001/COMP3710Rangpurfordemo2.git
 cd COMP3710Rangpurfordemo2
 mkdir -p logs
+```
 
-# 3. Grab a CPU node for the install and the download - not a GPU node
-srun --partition=cpu --time=01:00:00 --pty bash
+Then download CIFAR-10 once, on a **CPU** node - the login node is a lobby, not
+a workshop:
 
-# ... Miniconda install and `conda create -n torch python=3.11 pip -y`
-#     then `pip3 install --no-cache-dir torch torchvision`, per the guide ...
-
-conda activate torch
+```bash
+srun --partition=cpu --time=00:30:00 --pty bash
+source $HOME/miniconda3/bin/activate && conda activate torch
+cd ~/COMP3710Rangpurfordemo2
 python prepare_data.py --data-dir $HOME/data   # ~170 MB, once only
 exit                                            # free the node
 ```
@@ -125,8 +148,8 @@ survives. A summary written only at the end would be lost.
 Bringing the results back:
 
 ```bash
-scp -r s49133336@rangpur.compute.eait.uq.edu.au:~/COMP3710Rangpurfordemo2/runs/baseline runs/
-scp s49133336@rangpur.compute.eait.uq.edu.au:~/COMP3710Rangpurfordemo2/logs/train_12345.out logs/
+scp -r s4913333@rangpur.compute.eait.uq.edu.au:~/COMP3710Rangpurfordemo2/runs/baseline runs/
+scp s4913333@rangpur.compute.eait.uq.edu.au:~/COMP3710Rangpurfordemo2/logs/train_12345.out logs/
 python plot_run.py runs/baseline
 ```
 
@@ -164,7 +187,7 @@ is lost in the queue:
 
 ```bash
 tmux new -s demo
-srun --partition=comp3710 --gres=gpu:1 --cpus-per-task=8 --time=01:00:00 --pty bash
+srun --partition=comp3710 --gres=gpu:1 --cpus-per-task=4 --time=01:00:00 --pty bash
 conda activate torch
 cd ~/COMP3710Rangpurfordemo2
 # then, when the demonstrator is watching:

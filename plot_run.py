@@ -4,7 +4,7 @@
 cluster. It is also runnable on its own, which is the normal case: copy the run
 directory back and render the figures on the machine that has matplotlib.
 
-    scp -r s49133336@rangpur.compute.eait.uq.edu.au:~/COMP3710Rangpurfordemo2/runs/baseline runs/
+    scp -r s4913333@rangpur.compute.eait.uq.edu.au:~/COMP3710Rangpurfordemo2/runs/baseline runs/
     python plot_run.py runs/baseline
 
 Produces ``curves.png`` (accuracy, loss, learning rate, per-epoch time) and

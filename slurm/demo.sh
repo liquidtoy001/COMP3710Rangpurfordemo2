@@ -2,11 +2,16 @@
 #SBATCH --job-name=d2-demo
 #SBATCH --partition=comp3710
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=16G
+#SBATCH --cpus-per-task=4
 #SBATCH --time=00:15:00
 #SBATCH --output=logs/demo_%j.out
 #SBATCH --error=logs/demo_%j.err
+
+# Note: no --mem directive. The a100 nodes report CfgTRES mem=1M, i.e. this
+# cluster does not schedule on memory at all; asking for --mem=16G leaves the
+# job pending forever with "Requested node configuration is not available".
+# --cpus-per-task is 4 of the node's 8 cores, so the job can share a node that
+# is already partly allocated rather than waiting for a whole one.
 
 # The live demonstration run: inference plus one epoch of training.
 #
