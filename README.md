@@ -28,6 +28,8 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `slurm/smoke_test_partition.sh` | The same check on `a100-test`, which is usually free |
 | `slurm/train.sh` | The full 30-epoch baseline run |
 | `slurm/demo.sh` | Batch fallback for the live run |
+| `explore_oasis.py` | Read-only probe of the OASIS dataset, before any Part 4 code |
+| `slurm/explore_oasis.sh` | Runs that probe on a CPU node |
 
 Checkpoints, datasets and Slurm logs are deliberately not tracked; see
 `.gitignore`.
@@ -253,6 +255,27 @@ fallback if the interactive session is lost.
 **The demonstration is given from a MacBook, from a fresh clone.** SSH access,
 the UQ VPN and `~/.ssh/config` must all be verified on that machine, not only on
 the machine the code was written on.
+
+## Part 4: before writing any code
+
+The three Part 4 tasks all read the preprocessed OASIS brain MR data from
+`/home/groups/comp3710/`, but the lab sheet says nothing about how it is laid
+out. The directory structure, file format, image size, image count, whether a
+train/test split already exists and how many segmentation labels there are all
+decide how the dataset class is written - so find out first rather than guess:
+
+```bash
+sbatch slurm/explore_oasis.sh
+cat logs/oasis_*.out
+```
+
+It needs no GPU and no `--account`, so it runs on the idle `cpu` nodes
+immediately instead of queueing behind the A100s. It is read-only.
+
+The output should answer: where OASIS is and whether it is pre-split; the format
+and image size (which fixes the VAE's input layer); whether label maps are
+present and how many classes they contain (which fixes the width of the UNet's
+one-hot output); and the total image count.
 
 ## Design notes
 
