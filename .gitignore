@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- COMP3710 demo 2 ---------------------------------------------------------
+# Datasets: CIFAR-10 lives in $HOME/data on Rangpur, never in the repository.
+data/
+# Run artefacts: checkpoints are tens of MB and must not enter git history.
+runs/
+*.pt
+*.pth
+# Slurm job output
+logs/
+*.out
+*.err
