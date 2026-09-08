@@ -11,7 +11,9 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | 3.2a | ResNet-18 on CIFAR-10, >90% test accuracy | 1 | code written, not yet run |
 | 3.2b | Inference + one training epoch live during the demo | 1 | script written, not yet rehearsed |
 | 3.2c | Mixed precision, 94% at V100-360s or better | 2 | first controlled run queued |
-| 4.4 | OASIS recognition tasks (VAE / UNet / GAN) | 7 | not started |
+| 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | code written, queued |
+| 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | not started |
+| 4.4 Task 3 | OASIS GAN | (7/7 tier) | not attempting yet |
 
 ## Layout
 
@@ -29,6 +31,11 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `slurm/train.sh` | The full 30-epoch baseline run |
 | `slurm/train_amp.sh` | The same run with mixed precision, for 3.2c |
 | `slurm/demo.sh` | Batch fallback for the live run |
+| `oasis.py` | OASIS dataset: paths, mask pairing, label remapping |
+| `vae.py` | The convolutional VAE |
+| `train_vae.py` | Trains it and saves the manifold visualisation data |
+| `slurm/train_vae.sh` | 30-epoch VAE run, 32-dimensional latent |
+| `slurm/train_vae_latent2.sh` | The same with a 2D latent, for the decoded grid |
 | `explore_oasis.py` | Read-only probe of the OASIS dataset, before any Part 4 code |
 | `slurm/explore_oasis.sh` | Runs that probe on a CPU node |
 
@@ -279,6 +286,60 @@ node in seconds, so it is the next thing to do, not something to wait for.
 
 Parts 1, 2 and 3.1 need no cluster at all. LFW is about 1,300 images and trains
 on a laptop.
+
+## OASIS, as it actually is
+
+Confirmed with `explore_oasis.py` on 9 September 2026:
+
+```
+/home/groups/comp3710/OASIS/
+    keras_png_slices_train/          9,664 PNG   256x256 greyscale uint8
+    keras_png_slices_validate/       1,120 PNG
+    keras_png_slices_test/             544 PNG
+    keras_png_slices_seg_{train,validate,test}/   matching masks, same counts
+```
+
+The split is already made, so no train/test division is done in code.
+
+**Masks are stored as 0 / 85 / 170 / 255, not 0 / 1 / 2 / 3.** There are four
+classes, spread across the 8-bit range so the masks are viewable as ordinary
+greyscale PNGs. Feeding those raw values to cross entropy would treat them as
+indices into a 256-class output - an index error at best, nonsense training at
+worst. `oasis.encode_mask` maps them back, and raises if it meets a value
+outside the known set rather than silently guessing.
+
+**Image and mask filenames differ by their prefix**: `case_001_slice_0.nii.png`
+pairs with `seg_001_slice_0.nii.png`. `oasis.mask_path_for` anchors that
+substitution to the start of the name.
+
+## Task 1: the VAE
+
+`slurm/train_vae.sh` trains a 32-dimensional latent for 30 epochs;
+`slurm/train_vae_latent2.sh` trains a 2-dimensional one. Both are worth having:
+the first shows the model reconstructs faithfully, the second shows what the
+latent space looks like without any dimensionality reduction in between.
+
+Full marks need the manifold *visualised*, not just the model trained. Since
+matplotlib is not on the cluster, `train_vae.py` saves what the figures need:
+
+| File | Contents |
+| --- | --- |
+| `latents.npy` | `mu` for every test image - the manifold, before reduction |
+| `reconstructions.npy` | Test images beside their rebuilds |
+| `samples.npy` | Images decoded from `z ~ N(0, I)` - novel brains |
+| `manifold_grid.npy` | A decoded sweep of the plane (2D latent runs only) |
+
+`samples.npy` is the quickest read on whether training worked: a collapsed VAE
+returns the same blurry average for every draw from the prior.
+
+Two numerical details that are easy to get wrong and hard to debug afterwards:
+
+* The reconstruction term is **summed** over pixels, not averaged. Averaging
+  would shrink it by a factor of 65,536 against the KL term, and the model would
+  collapse to emitting the dataset mean.
+* `logvar` is clamped to [-10, 10]. The KL term contains `exp(logvar)`; left
+  unbounded, a few bad early steps drove it to 1e12 in testing and took the run
+  with it.
 
 ## Part 4: before writing any code
 
