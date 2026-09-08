@@ -51,9 +51,16 @@ what the Slurm scripts are shaped around:
 | Fact | Consequence |
 | --- | --- |
 | `comp3710` holds the A100 nodes `a100-0` .. `a100-9` | one `--gres=gpu:1` per job |
+| The partition sets `AllowAccounts=comp3710` | **every GPU job needs `--account=comp3710`** |
 | Nodes report `CfgTRES=cpu=8,mem=1M` | **never pass `--mem`** - see below |
 | 8 cores per node, usually in `mix` state | `--cpus-per-task=4`, not 8 |
 | Home quota 17 GB (`/home/Student/s4913333`) | fine for CIFAR-10 and a few checkpoints |
+
+**The account trap.** Jobs default to the personal account (`s4913333`), which
+the `comp3710` partition does not accept. Without `--account=comp3710` the job
+sits in `PENDING` with `Reason=PartitionConfig` and never starts - it is a
+permissions mismatch, not a queue, so waiting does not help. The `cpu` partition
+has no such restriction, which is why the download job ran without it.
 
 **The `--mem` trap.** The nodes advertise 1 MB of memory, meaning this cluster
 does not schedule on memory at all. A job asking for `--mem=16G` matches no node
@@ -215,7 +222,7 @@ is lost in the queue:
 
 ```bash
 tmux new -s demo
-srun --partition=comp3710 --gres=gpu:1 --cpus-per-task=4 --time=01:00:00 --pty bash
+srun --partition=comp3710 --account=comp3710 --gres=gpu:1 --cpus-per-task=4 \n    --time=01:00:00 --pty bash
 conda activate torch
 cd ~/COMP3710Rangpurfordemo2
 # then, when the demonstrator is watching:

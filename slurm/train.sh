@@ -1,12 +1,18 @@
 #!/bin/bash
 #SBATCH --job-name=d2-train
 #SBATCH --partition=comp3710
+#SBATCH --account=comp3710
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=00:40:00
 #SBATCH --output=logs/train_%j.out
 #SBATCH --error=logs/train_%j.err
 
+# Note: --account=comp3710 is required. The partition sets
+# AllowAccounts=comp3710, so a job submitted under the default personal
+# account sits in PENDING with Reason=PartitionConfig - which never clears
+# on its own, because it is a permissions mismatch and not a queue.
+#
 # Note: no --mem directive. The a100 nodes report CfgTRES mem=1M, i.e. this
 # cluster does not schedule on memory at all; asking for --mem=16G leaves the
 # job pending forever with "Requested node configuration is not available".
