@@ -149,7 +149,25 @@ Every run leaves four artefacts in its `--out-dir`:
 
 The Slurm job's own `logs/train_<jobid>.out` sits alongside them, carrying the
 job ID, the node name, `nvidia-smi` output and the per-epoch lines with
-timestamps.
+timestamps. Follow a running job with:
+
+```bash
+tail -f logs/train_<jobid>.out
+```
+
+The job scripts set `PYTHONUNBUFFERED=1` so that works. Without it Python
+block-buffers stdout when it is a file rather than a terminal, and a running job
+looks hung because nothing reaches the log until the buffer fills.
+
+A job is finished when it no longer appears in `squeue --me`. To check how it
+ended:
+
+```bash
+sacct -j <jobid> --format=JobID,JobName,State,Elapsed,ExitCode
+```
+
+`COMPLETED` with `0:0` is success; `TIMEOUT` means the `--time` limit was too
+short and `FAILED` means the script itself errored.
 
 `history.csv` is written incrementally and flushed every epoch on purpose: if
 the job hits its Slurm time limit or the node fails, the record up to that point

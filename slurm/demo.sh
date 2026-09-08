@@ -23,6 +23,12 @@
 echo "job $SLURM_JOB_ID on $(hostname), started $(date)"
 nvidia-smi
 
+# Unbuffered Python output. When stdout is a file rather than a terminal,
+# Python block-buffers it, so a long job's progress does not appear in the log
+# until the buffer fills or the process exits. That makes a running job look
+# hung. This costs nothing and makes `tail -f logs/...out` work as expected.
+export PYTHONUNBUFFERED=1
+
 source $HOME/miniconda3/bin/activate
 conda activate torch
 
