@@ -23,6 +23,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `train.py` | Training loop, one-cycle schedule, checkpointing, metrics |
 | `plot_run.py` | Turns a run's `metrics.json` into training curves and a summary |
 | `demo_run.py` | The live demonstration script for 3.2b |
+| `slurm/download.sh` | Fetch CIFAR-10 once, as a batch job on a CPU node |
 | `slurm/smoke.sh` | Five batches on a GPU node - run this before any long job |
 | `slurm/train.sh` | The full 30-epoch baseline run |
 | `slurm/demo.sh` | Batch fallback for the live run |
@@ -80,20 +81,29 @@ cd COMP3710Rangpurfordemo2
 mkdir -p logs
 ```
 
-Then download CIFAR-10 once, on a **CPU** node - the login node is a lobby, not
-a workshop:
+Then download CIFAR-10 once (~170 MB), as a batch job on a CPU node:
 
 ```bash
-srun --partition=cpu --time=00:30:00 --pty bash
-source $HOME/miniconda3/bin/activate && conda activate torch
-cd ~/COMP3710Rangpurfordemo2
-python prepare_data.py --data-dir $HOME/data   # ~170 MB, once only
-exit                                            # free the node
+sbatch slurm/download.sh
+squeue --me
+cat logs/download_*.out
 ```
 
-`prepare_data.py` is separate from `train.py` on purpose: a GPU job that
-downloads is a GPU job holding an A100 idle on the network, and one that fails
-outright if the download does.
+Two deliberate choices here.
+
+`prepare_data.py` is separate from `train.py` because a GPU job that downloads
+is a GPU job holding an A100 idle on the network, and one that fails outright if
+the download does.
+
+The download is a **batch** job rather than an `srun --pty` session because an
+interactive allocation's wall clock runs in real time whether or not you are
+typing. Time spent reading, waiting on a slow first `import torch`, or simply
+being distracted all counts against it. A 30 minute interactive session expired
+part-way through this download on the first attempt and took the SSH connection
+with it. Batch jobs do not care: submit and walk away.
+
+Interactive sessions are still the right tool for debugging and for holding a
+GPU before the demonstration - just not for anything that runs unattended.
 
 ## Running
 
