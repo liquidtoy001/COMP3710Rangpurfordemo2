@@ -15,6 +15,7 @@ Full run:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import random
@@ -202,6 +203,22 @@ def main() -> None:
     # together.
     scaler = torch.amp.GradScaler(device.type, enabled=args.amp and device.type == "cuda")
 
+    # Per-epoch history is appended to a CSV *as the run goes*, and flushed
+    # every epoch. If the job hits its Slurm time limit or the node dies, the
+    # record of everything up to that point survives - which a summary written
+    # only at the end would not.
+    csv_path = out_dir / "history.csv"
+    csv_file = csv_path.open("w", newline="", encoding="utf-8")
+    csv_writer = csv.DictWriter(
+        csv_file,
+        fieldnames=[
+            "epoch", "train_accuracy", "train_loss",
+            "test_accuracy", "test_loss", "epoch_seconds", "lr",
+        ],
+    )
+    csv_writer.writeheader()
+    csv_file.flush()
+
     history = []
     best_accuracy = 0.0
     synchronise(device)
@@ -221,17 +238,18 @@ def main() -> None:
             model, test_loader, device, criterion, args.limit_batches
         )
 
-        history.append(
-            {
-                "epoch": epoch,
-                "train_accuracy": train_accuracy,
-                "train_loss": train_loss,
-                "test_accuracy": test_accuracy,
-                "test_loss": test_loss,
-                "epoch_seconds": epoch_seconds,
-                "lr": scheduler.get_last_lr()[0],
-            }
-        )
+        record = {
+            "epoch": epoch,
+            "train_accuracy": train_accuracy,
+            "train_loss": train_loss,
+            "test_accuracy": test_accuracy,
+            "test_loss": test_loss,
+            "epoch_seconds": epoch_seconds,
+            "lr": scheduler.get_last_lr()[0],
+        }
+        history.append(record)
+        csv_writer.writerow(record)
+        csv_file.flush()
 
         marker = ""
         if test_accuracy > best_accuracy:
@@ -255,6 +273,7 @@ def main() -> None:
         )
 
     total_seconds = time.perf_counter() - run_start
+    csv_file.close()
 
     summary = {
         "best_test_accuracy": best_accuracy,
@@ -272,6 +291,19 @@ def main() -> None:
     print(f"target (>90%)      : {'MET' if best_accuracy > 0.90 else 'NOT MET'}")
     print(f"checkpoint         : {out_dir / 'best.pt'}")
     print(f"metrics            : {out_dir / 'metrics.json'}")
+    print(f"per-epoch history  : {csv_path}")
+
+    # Training curves, if matplotlib happens to be installed on the cluster.
+    # It is not needed there: plot_run.py regenerates the figure locally from
+    # metrics.json after the results are copied back.
+    try:
+        from plot_run import plot_history
+
+        figure_path = plot_history(summary, out_dir / "curves.png")
+        print(f"curves             : {figure_path}")
+    except ImportError:
+        print("curves             : skipped (matplotlib not installed here);"
+              " run plot_run.py locally after scp")
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `data.py` | CIFAR-10 transforms, loaders, and device selection |
 | `prepare_data.py` | One-off dataset download, to be run on a **CPU** node |
 | `train.py` | Training loop, one-cycle schedule, checkpointing, metrics |
+| `plot_run.py` | Turns a run's `metrics.json` into training curves and a summary |
 | `demo_run.py` | The live demonstration script for 3.2b |
 | `slurm/smoke.sh` | Five batches on a GPU node - run this before any long job |
 | `slurm/train.sh` | The full 30-epoch baseline run |
@@ -96,6 +97,57 @@ cat logs/train_<jobid>.out
 DAWNBench guideline on an A100; the job's 40 minute limit is headroom, not a
 target. The result lands in `runs/baseline/best.pt` and `runs/baseline/metrics.json`.
 
+## Training records
+
+Training runs on the cluster as a script, not as a notebook, because `sbatch`
+jobs are non-interactive: a job may sit in the queue for half an hour and then
+run while the laptop that submitted it is closed. There is no kernel and nobody
+watching. The notebook's job is to *read* these records afterwards and present
+them.
+
+Every run leaves four artefacts in its `--out-dir`:
+
+| Artefact | Contents |
+| --- | --- |
+| `history.csv` | One row per epoch, **flushed as the run goes** |
+| `metrics.json` | The same history plus the arguments, device and totals |
+| `best.pt` | Weights from the best epoch (~45 MB, never committed) |
+| `curves.png` | Accuracy, loss, learning rate and per-epoch time |
+
+The Slurm job's own `logs/train_<jobid>.out` sits alongside them, carrying the
+job ID, the node name, `nvidia-smi` output and the per-epoch lines with
+timestamps.
+
+`history.csv` is written incrementally and flushed every epoch on purpose: if
+the job hits its Slurm time limit or the node fails, the record up to that point
+survives. A summary written only at the end would be lost.
+
+Bringing the results back:
+
+```bash
+scp -r s49133336@rangpur.compute.eait.uq.edu.au:~/COMP3710Rangpurfordemo2/runs/baseline runs/
+scp s49133336@rangpur.compute.eait.uq.edu.au:~/COMP3710Rangpurfordemo2/logs/train_12345.out logs/
+python plot_run.py runs/baseline
+```
+
+`plot_run.py` also prints the numbers worth quoting: best accuracy, total
+training time, mean time per epoch, the epoch at which the run crossed 90%, and
+whether the under-30-minute guideline was met.
+
+matplotlib is not needed on the cluster - `train.py` skips the figure with a
+note if it is not installed, and `plot_run.py` regenerates it locally from
+`metrics.json`. Install it there only if you want the figure produced in the
+job itself:
+
+```bash
+pip install --no-cache-dir matplotlib
+```
+
+**What the demonstrator sees:** a real training log with a job ID and a node
+name, timestamped per-epoch progress, and curves generated from it - evidence of
+a run that actually happened on Rangpur, rather than cells re-executed on the
+spot.
+
 ## Demonstration day
 
 Requirement 2 of part 3.2 says the model must run inference and a single epoch
@@ -116,10 +168,11 @@ srun --partition=comp3710 --gres=gpu:1 --cpus-per-task=8 --time=01:00:00 --pty b
 conda activate torch
 cd ~/COMP3710Rangpurfordemo2
 # then, when the demonstrator is watching:
-python demo_run.py --checkpoint runs/baseline/best.pt --data-dir $HOME/data
+python demo_run.py --checkpoint runs/baseline/best.pt --data-dir $HOME/data | tee logs/demo_day.log
 ```
 
-`slurm/demo.sh` is the batch fallback if the interactive session is lost.
+`tee` keeps a copy of what the demonstrator saw. `slurm/demo.sh` is the batch
+fallback if the interactive session is lost.
 
 **The demonstration is given from a MacBook, from a fresh clone.** SSH access,
 the UQ VPN and `~/.ssh/config` must all be verified on that machine, not only on
