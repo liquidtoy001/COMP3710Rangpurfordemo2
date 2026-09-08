@@ -165,6 +165,85 @@ def inspect_images(examples: dict[str, list[Path]]) -> None:
                 print(f"    could not read: {type(error).__name__}: {error}")
 
 
+# --- OASIS-specific analysis -------------------------------------------------
+#
+# The generic inventory says how many files exist, but three things decide the
+# Part 4 code and none are visible from a file listing: the image size (the
+# VAE's input layer), the set of label values (the width of the UNet's one-hot
+# output), and how an image filename maps to its mask's.
+
+OASIS_SPLITS = ("train", "validate", "test")
+LABEL_SAMPLE_FILES = 25
+
+
+def analyse_oasis(root: Path) -> None:
+    """Report image size, label classes and filename pairing for OASIS."""
+    import numpy as np
+    from PIL import Image
+
+    image_dirs = {s: root / f"keras_png_slices_{s}" for s in OASIS_SPLITS}
+    label_dirs = {s: root / f"keras_png_slices_seg_{s}" for s in OASIS_SPLITS}
+
+    if not all(d.is_dir() for d in list(image_dirs.values()) + list(label_dirs.values())):
+        return  # not an OASIS-shaped directory; the generic report is enough
+
+    print("")
+    print("=" * 70)
+    print("OASIS DETAIL")
+    print("=" * 70)
+
+    print("")
+    print("split sizes")
+    print(f"  {'split':<10}{'images':>10}{'labels':>10}   paired")
+    for split in OASIS_SPLITS:
+        images = sorted(image_dirs[split].iterdir())
+        labels = sorted(label_dirs[split].iterdir())
+        paired = "yes" if len(images) == len(labels) else "NO - counts differ"
+        print(f"  {split:<10}{len(images):>10,}{len(labels):>10,}   {paired}")
+
+    # Image geometry and dtype: what the VAE's encoder has to accept.
+    print("")
+    print("image samples (keras_png_slices_train)")
+    for path in sorted(image_dirs["train"].iterdir())[:3]:
+        with Image.open(path) as image:
+            array = np.array(image)
+            mode = image.mode
+        print(f"  {path.name}")
+        print(f"    mode {mode}  shape {array.shape}  dtype {array.dtype}"
+              f"  range {array.min()}..{array.max()}"
+              f"  distinct {len(np.unique(array))}")
+
+    # Label values accumulated across many files. A single slice need not
+    # contain every class, so the union over a sample is the trustworthy answer.
+    print("")
+    print(f"label values, union over {LABEL_SAMPLE_FILES} files (keras_png_slices_seg_train)")
+    seen: set[int] = set()
+    per_file_counts = []
+    for path in sorted(label_dirs["train"].iterdir())[:LABEL_SAMPLE_FILES]:
+        with Image.open(path) as image:
+            values = np.unique(np.array(image))
+        seen.update(int(v) for v in values)
+        per_file_counts.append(len(values))
+    print(f"  distinct values across the sample: {sorted(seen)}")
+    print(f"  -> {len(seen)} classes; per-file class counts ranged "
+          f"{min(per_file_counts)}..{max(per_file_counts)}")
+    print("  (this is the width the UNet one-hot output needs)")
+
+    # Filename mapping: the dataset class must turn an image path into its mask
+    # path, and the two directories need not use the same names.
+    print("")
+    print("filename pairing")
+    image_names = sorted(p.name for p in image_dirs["train"].iterdir())[:3]
+    label_names = sorted(p.name for p in label_dirs["train"].iterdir())[:3]
+    print(f"  image names: {image_names}")
+    print(f"  label names: {label_names}")
+    label_set = {p.name for p in label_dirs["train"].iterdir()}
+    if any(n in label_set for n in image_names):
+        print("  -> names match exactly; pair by filename")
+    else:
+        print("  -> names differ; derive the rule from the samples above")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -185,6 +264,7 @@ def main() -> None:
     show_tree(root, args.depth)
     examples = summarise_files(root)
     inspect_images(examples)
+    analyse_oasis(root)
 
     print(f"\n{'=' * 70}")
     print("Questions this output should answer before any Part 4 code is written:")

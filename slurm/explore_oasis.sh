@@ -19,6 +19,10 @@ export PYTHONUNBUFFERED=1
 source $HOME/miniconda3/bin/activate
 conda activate torch
 
-python explore_oasis.py --root /home/groups/comp3710 --depth 3
+# Optional first argument selects a subdirectory, e.g.
+#     sbatch slurm/explore_oasis.sh /home/groups/comp3710/OASIS
+# Sampling keeps only a few files per extension, so pointing it at the whole
+# share lets whichever dataset comes first alphabetically use up the quota.
+python explore_oasis.py --root "${1:-/home/groups/comp3710}" --depth 3
 
 echo "finished $(date)"
