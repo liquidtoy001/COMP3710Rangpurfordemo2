@@ -25,6 +25,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `demo_run.py` | The live demonstration script for 3.2b |
 | `slurm/download.sh` | Fetch CIFAR-10 once, as a batch job on a CPU node |
 | `slurm/smoke.sh` | Five batches on a GPU node - run this before any long job |
+| `slurm/smoke_test_partition.sh` | The same check on `a100-test`, which is usually free |
 | `slurm/train.sh` | The full 30-epoch baseline run |
 | `slurm/demo.sh` | Batch fallback for the live run |
 
@@ -61,6 +62,23 @@ the `comp3710` partition does not accept. Without `--account=comp3710` the job
 sits in `PENDING` with `Reason=PartitionConfig` and never starts - it is a
 permissions mismatch, not a queue, so waiting does not help. The `cpu` partition
 has no such restriction, which is why the download job ran without it.
+
+**One GPU per node, and they are always taken.** Each `a100-*` node carries
+exactly one A100 (`gpu:a100:1`) alongside 8 CPU cores. The cores are mostly idle
+- a typical node shows 1 or 2 of 8 allocated - but the single GPU is held, often
+by jobs from other partitions (`cosc3500`, `a100-grind`) that share the same
+physical machines. So the GPU is the bottleneck and trimming `--cpus-per-task`
+does nothing for queue time.
+
+The practical consequence: a smoke test that needs seconds of compute can wait
+hours behind half-hour training jobs. Use `slurm/smoke_test_partition.sh`, which
+targets `a100-test` (`AllowAccounts=ALL`, nodes `a100-a` and `a100-b`) and
+normally starts at once. Keep real training on `comp3710`.
+
+**A queue full of jobs that will never run.** `squeue -p comp3710` shows dozens
+of old jobs stuck at `Reason=PartitionConfig` - other students who hit the same
+missing-`--account` problem and never diagnosed it. They are not competing for
+resources, so the real queue is much shorter than it looks.
 
 **The `--mem` trap.** The nodes advertise 1 MB of memory, meaning this cluster
 does not schedule on memory at all. A job asking for `--mem=16G` matches no node
