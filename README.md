@@ -34,6 +34,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `oasis.py` | OASIS dataset: paths, mask pairing, label remapping |
 | `vae.py` | The convolutional VAE |
 | `train_vae.py` | Trains it and saves the manifold visualisation data |
+| `slurm/smoke_vae.sh` | One epoch on 128 images, on the free `a100-test` |
 | `slurm/train_vae.sh` | 30-epoch VAE run, 32-dimensional latent |
 | `slurm/train_vae_latent2.sh` | The same with a 2D latent, for the decoded grid |
 | `explore_oasis.py` | Read-only probe of the OASIS dataset, before any Part 4 code |
@@ -328,6 +329,18 @@ matplotlib is not on the cluster, `train_vae.py` saves what the figures need:
 | `reconstructions.npy` | Test images beside their rebuilds |
 | `samples.npy` | Images decoded from `z ~ N(0, I)` - novel brains |
 | `manifold_grid.npy` | A decoded sweep of the plane (2D latent runs only) |
+
+Smoke test on `a100-test` before queueing a real run:
+
+```bash
+sbatch slurm/smoke_vae.sh
+cat logs/vaesmoke_*.out
+```
+
+Use the script, not `sbatch --wrap`. A bare `--wrap` inherits Slurm's defaults -
+one CPU and **no GPU** - so the first attempt at this ran on the CPU while
+sitting on an A100 node, reported `device: cpu`, and validated everything except
+the thing it existed to validate. Directives in a file cannot be forgotten.
 
 `samples.npy` is the quickest read on whether training worked: a collapsed VAE
 returns the same blurry average for every draw from the prior.
