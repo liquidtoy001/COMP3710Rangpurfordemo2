@@ -12,7 +12,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | 3.2b | Inference + one training epoch live during the demo | 1 | script written, not yet rehearsed |
 | 3.2c | Mixed precision, 94% at V100-360s or better | 2 | first controlled run queued |
 | 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | code written, queued |
-| 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | not started |
+| 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | code written, not yet run |
 | 4.4 Task 3 | OASIS GAN | (7/7 tier) | not attempting yet |
 
 ## Layout
@@ -37,6 +37,10 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `slurm/smoke_vae.sh` | One epoch on 128 images, on the free `a100-test` |
 | `slurm/train_vae.sh` | 30-epoch VAE run, 32-dimensional latent |
 | `slurm/train_vae_latent2.sh` | The same with a 2D latent, for the decoded grid |
+| `unet.py` | The UNet, the Dice loss and the per-class Dice metric |
+| `train_unet.py` | Trains it and reports per-class DSC |
+| `slurm/smoke_unet.sh` | One epoch on 128 slices, on the free `a100-test` |
+| `slurm/train_unet.sh` | The 30-epoch UNet run |
 | `explore_oasis.py` | Read-only probe of the OASIS dataset, before any Part 4 code |
 | `slurm/explore_oasis.sh` | Runs that probe on a CPU node |
 
@@ -353,6 +357,51 @@ Two numerical details that are easy to get wrong and hard to debug afterwards:
 * `logvar` is clamped to [-10, 10]. The KL term contains `exp(logvar)`; left
   unbounded, a few bad early steps drove it to 1e12 in testing and took the run
   with it.
+
+## Task 2: the UNet
+
+The requirement is **DSC above 0.9 for every label**, with categorical
+(one-hot) output. Four decisions follow from that wording and each should be
+explainable on the day.
+
+**Skip connections are the point.** Downsampling four times is what buys a large
+receptive field, so a pixel's label can depend on distant context - but by the
+bottleneck each position covers a 16x16 patch and precise boundaries are gone.
+The decoder can recover *what* is present from the bottleneck but not exactly
+*where* its edges are. The skips hand back the high-resolution encoder features
+that place those edges to the pixel. For a per-pixel task that is the difference
+between a usable mask and a blurry blob.
+
+**Dice loss, not cross entropy alone.** Background dominates a brain slice, so a
+model predicting background everywhere would score well on pixel accuracy and on
+unweighted cross entropy while being useless. Dice normalises each class by its
+own size, so a small structure counts as much as a large one. Cross entropy is
+kept alongside it because it gives stronger gradients early, when predictions
+are near-uniform and Dice's gradient is weak.
+
+**The reported DSC uses the hard argmax; the loss uses soft probabilities.**
+Argmax has zero gradient almost everywhere and cannot be trained through, so the
+two necessarily differ - the training loss will always look slightly better than
+the true coefficient. That is by design, not a bug.
+
+**Dice is accumulated over the whole split, not averaged per batch.** Many
+slices do not contain every class, and a per-slice Dice for an absent class is
+0/0. Fudging that to either 0 or 1 distorts the average badly. Summing
+intersections and cardinalities first and dividing once sidesteps it.
+
+**The checkpoint is selected on the worst class, not the mean.** A mean is
+easily carried over 0.9 by the background class while a tissue class languishes,
+and the mean is not what is being marked.
+
+```bash
+sbatch slurm/smoke_unet.sh      # one epoch, 128 slices, on a100-test
+sbatch slurm/train_unet.sh      # the real run
+```
+
+If a class falls short of 0.9, the levers in order are: more epochs; flip
+augmentation; a wider network (`--base-channels 64`); and weighting the Dice
+term towards the failing class. Change one at a time, or the ablation cannot say
+what helped.
 
 ## Part 4: before writing any code
 
