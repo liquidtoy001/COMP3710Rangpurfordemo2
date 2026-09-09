@@ -8,7 +8,8 @@ everything those figures need as ``.npy`` arrays:
     latents.npy         mu for every test image (the manifold, before reduction)
     reconstructions.npy a fixed batch of test images beside their rebuilds
     samples.npy         images decoded from z ~ N(0, I), i.e. novel brains
-    manifold_grid.npy   only when --latent-dim 2: a decoded sweep of the plane
+    manifold.npz        only when --latent-dim 2: a decoded sweep of the plane,
+                        with the z1/z2 coordinates it covers
 
 Smoke test first:
 
@@ -40,7 +41,14 @@ from vae import VAE, count_parameters, vae_loss
 NUM_RECONSTRUCTIONS = 8
 NUM_SAMPLES = 16
 MANIFOLD_STEPS = 20
-MANIFOLD_EXTENT = 2.5
+# The grid is swept across this central percentile range of the codes the
+# encoder actually produced, rather than a fixed +/-2.5. A VAE whose KL term
+# is weak relative to its reconstruction term - which is the normal case when
+# reconstruction is summed over 65,536 pixels - puts its codes nowhere near
+# the unit scale of the prior. The first run here spanned z1 in [-7, 25], so a
+# +/-2.5 sweep covered a small blob at the centre and every decoded tile came
+# out looking identical.
+MANIFOLD_PERCENTILES = (2.0, 98.0)
 
 
 def set_seed(seed: int) -> None:
@@ -148,20 +156,31 @@ def save_visualisation_data(
     #    sweep a grid over the plane and decode every point. No dimensionality
     #    reduction, and no approximation.
     if model.latent_dim == 2:
-        axis = torch.linspace(-MANIFOLD_EXTENT, MANIFOLD_EXTENT, MANIFOLD_STEPS)
+        low, high = np.percentile(latents_array, MANIFOLD_PERCENTILES, axis=0)
+        z1 = torch.linspace(float(low[0]), float(high[0]), MANIFOLD_STEPS)
+        z2 = torch.linspace(float(low[1]), float(high[1]), MANIFOLD_STEPS)
         grid = torch.stack(
-            [torch.stack([x, y]) for y in axis for x in axis]
+            [torch.stack([x, y]) for y in z2 for x in z1]
         ).to(device)
         decoded = []
         for start in range(0, grid.size(0), 32):
             decoded.append(model.decode(grid[start:start + 32]).cpu().numpy())
-        np.save(out_dir / "manifold_grid.npy", np.concatenate(decoded, axis=0))
+        # Axes are saved alongside the tiles so the figure can be labelled with
+        # the coordinates it actually covers.
+        np.savez(
+            out_dir / "manifold.npz",
+            grid=np.concatenate(decoded, axis=0),
+            z1=z1.numpy(),
+            z2=z2.numpy(),
+        )
 
     print(f"  latents        : {latents_array.shape} -> latents.npy")
     print(f"  reconstructions: {images.size(0)} pairs -> reconstructions.npy")
     print(f"  prior samples  : {NUM_SAMPLES} -> samples.npy")
     if model.latent_dim == 2:
-        print(f"  manifold grid  : {MANIFOLD_STEPS}x{MANIFOLD_STEPS} -> manifold_grid.npy")
+        print(f"  manifold grid  : {MANIFOLD_STEPS}x{MANIFOLD_STEPS} over "
+              f"z1 [{low[0]:.2f}, {high[0]:.2f}] z2 [{low[1]:.2f}, {high[1]:.2f}]"
+              " -> manifold.npz")
 
 
 def main() -> None:

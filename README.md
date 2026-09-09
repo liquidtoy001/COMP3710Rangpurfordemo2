@@ -39,6 +39,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `slurm/smoke_vae.sh` | One epoch on 128 images, on the free `a100-test` |
 | `slurm/train_vae.sh` | 30-epoch VAE run, 32-dimensional latent |
 | `slurm/train_vae_latent2.sh` | The same with a 2D latent, for the decoded grid |
+| `slurm/train_vae_beta.sh` | Beta sweep: `sbatch ... <latent_dim> <beta>` |
 | `unet.py` | The UNet, the Dice loss and the per-class Dice metric |
 | `train_unet.py` | Trains it and reports per-class DSC |
 | `slurm/smoke_unet.sh` | One epoch on 128 slices, on the free `a100-test` |
@@ -294,12 +295,43 @@ for a larger batch size as the next 3.2c experiment, and it is why the DAWNBench
 reference solutions raise batch size and use channels-last together with AMP
 rather than relying on AMP alone.
 
-**The 2-dimensional VAE scores within 3% of the 32-dimensional one.** Two
-numbers should not describe a brain slice nearly as well as thirty-two. Either
-OASIS slices really are that stereotyped, or the larger model has suffered
-posterior collapse - the KL term driving most dimensions to the prior, leaving
-the model using only a handful. `plot_vae.py` counts the dimensions whose `mu`
-actually varies, which settles it.
+**The 2-dimensional VAE scores within 3% of the 32-dimensional one, and the
+reason is the opposite of what was expected.** Posterior collapse was the first
+hypothesis; it is ruled out, because all 32 dimensions have a `mu` that varies.
+The actual problem is too *little* regularisation, not too much.
+
+At beta=1 the KL term is **0.43%** of the loss for the 32-dimensional latent and
+**0.076%** for the 2-dimensional one. That is not a weighting, it is an absence:
+reconstruction is summed over 65,536 pixels while KL is summed over a handful of
+latent dimensions, so beta=1 does not put the two on comparable footing. The
+model is trained as a plain autoencoder in all but name, which is exactly why
+extra latent capacity buys so little.
+
+Two consequences show up in the figures:
+
+* The codes spread to `|mu| = 24` when the prior is N(0, 1). Drawing
+  `z ~ N(0, I)` therefore lands in regions the encoder never visited, and about
+  a third of `samples.png` is noise rather than brains.
+* The manifold sweep was hard-coded to +/-2.5, which covered a small blob at the
+  centre of a cloud spanning z1 in [-7, 25] - so every decoded tile looked
+  identical. That was a plotting bug, now fixed: the grid is swept across the
+  2nd-98th percentile of the codes the encoder actually produced, and the figure
+  is labelled with those coordinates.
+
+Making the KL about a tenth of the loss needs beta around 26 for the
+32-dimensional latent and 147 for the 2-dimensional one. `slurm/train_vae_beta.sh`
+brackets those:
+
+```bash
+sbatch slurm/train_vae_beta.sh 32 10
+sbatch slurm/train_vae_beta.sh 32 30
+sbatch slurm/train_vae_beta.sh 2 50
+sbatch slurm/train_vae_beta.sh 2 150
+```
+
+The expected trade is blurrier reconstructions for a latent space that matches
+its prior - so `samples.png` should stop producing noise, and the manifold
+should become a smooth sweep rather than a cloud with holes in it.
 
 **The 30-epoch CIFAR baseline finished in under four minutes**, against a
 DAWNBench guideline of thirty. The time requirement was never going to bind

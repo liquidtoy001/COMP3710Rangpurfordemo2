@@ -228,3 +228,7 @@ runs/
 logs/
 *.out
 *.err
+# Result bundles copied back from the cluster (tar czf --exclude='*.pt' runs/ logs/).
+# These run to hundreds of MB and exceed GitHub's 100 MB file limit.
+*.tgz
+*.tar.gz

@@ -140,10 +140,22 @@ def plot_latent(run_dir: Path, summary: dict, path: Path) -> None:
     """
     latents = np.load(run_dir / "latents.npy")
     latent_dim = latents.shape[1]
-    grid_path = run_dir / "manifold_grid.npy"
 
-    if latent_dim == 2 and grid_path.exists():
-        grid = np.load(grid_path)
+    # Newer runs save the grid with the coordinates it covers; older ones saved
+    # only the tiles, swept over a fixed +/-2.5 that often missed the codes
+    # entirely.
+    manifold_path = run_dir / "manifold.npz"
+    legacy_path = run_dir / "manifold_grid.npy"
+    z1 = z2 = None
+    grid = None
+    if manifold_path.exists():
+        data = np.load(manifold_path)
+        grid, z1, z2 = data["grid"], data["z1"], data["z2"]
+    elif legacy_path.exists():
+        grid = np.load(legacy_path)
+        z1 = z2 = np.linspace(-2.5, 2.5, int(round(np.sqrt(grid.shape[0]))))
+
+    if latent_dim == 2 and grid is not None:
         steps = int(round(np.sqrt(grid.shape[0])))
         tile = grid.shape[-1]
 
@@ -154,15 +166,31 @@ def plot_latent(run_dir: Path, summary: dict, path: Path) -> None:
             canvas[row * tile:(row + 1) * tile, column * tile:(column + 1) * tile] = grid[index, 0]
 
         fig, axes = plt.subplots(1, 2, figsize=(15, 7.5))
-        axes[0].imshow(canvas, **GREY)
-        axes[0].set_title("Manifold: every point of the latent plane, decoded")
-        axes[0].set_xticks([])
-        axes[0].set_yticks([])
+        # extent labels the image with latent coordinates rather than pixels.
+        axes[0].imshow(
+            canvas, origin="lower",
+            extent=(float(z1[0]), float(z1[-1]), float(z2[0]), float(z2[-1])),
+            aspect="auto", **GREY,
+        )
+        axes[0].set_title("Manifold: the latent plane, decoded")
+        axes[0].set_xlabel("z1")
+        axes[0].set_ylabel("z2")
 
-        axes[1].scatter(latents[:, 0], latents[:, 1], s=8, alpha=0.5)
+        axes[1].scatter(latents[:, 0], latents[:, 1], s=8, alpha=0.5, label="test images")
+        # Show which part of the space the grid actually covered - the first run
+        # swept a region far smaller than the codes occupied.
+        axes[1].add_patch(
+            plt.Rectangle(
+                (float(z1[0]), float(z2[0])),
+                float(z1[-1] - z1[0]), float(z2[-1] - z2[0]),
+                fill=False, edgecolor="r", linestyle="--", label="grid extent",
+            )
+        )
+        axes[1].scatter([0], [0], marker="+", s=200, color="k", label="prior mean")
         axes[1].set_title(f"Where the {len(latents)} test images land")
         axes[1].set_xlabel("z1")
         axes[1].set_ylabel("z2")
+        axes[1].legend()
         axes[1].grid(True, alpha=0.3)
     else:
         projected, explained = pca_project(latents)
@@ -211,6 +239,20 @@ def summarise(summary: dict, run_dir: Path) -> None:
           f"({summary['total_seconds'] / 60:.1f} min) on {summary['device']}")
     print(f"dimensions in use   : {int((spread > 0.1).sum())} of {latents.shape[1]}"
           "   (std of mu above 0.1)")
+
+    # A VAE's aggregate posterior should look like N(0, I). When the
+    # reconstruction term is summed over 65,536 pixels and the KL over a handful
+    # of latent dimensions, the KL is negligible unless beta compensates, and
+    # the codes drift far outside the prior. Sampling z ~ N(0, I) then lands in
+    # regions the encoder never visited, and the decoder returns nonsense.
+    history = summary["history"]
+    final = history[-1]
+    kl_share = final["val_kl"] / (final["val_reconstruction"] + final["val_kl"])
+    print(f"KL share of loss    : {kl_share:.3%}")
+    print(f"mean |mu|           : {np.abs(latents).mean():.2f}"
+          f"   max |mu|: {np.abs(latents).max():.2f}   (prior is N(0, 1))")
+    if np.abs(latents).max() > 5:
+        print("  -> codes sit far outside the prior; raise --beta to pull them in")
     print("-" * 62)
 
 
