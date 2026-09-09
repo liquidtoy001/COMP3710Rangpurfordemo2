@@ -25,6 +25,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `train.py` | Training loop, one-cycle schedule, checkpointing, metrics |
 | `plot_run.py` | Turns a CIFAR run's `metrics.json` into curves and a summary |
 | `plot_vae.py` | VAE figures: curves, reconstructions, samples, the manifold |
+| `compare_vae.py` | Puts several VAE runs side by side, for the beta sweep |
 | `plot_unet.py` | UNet figures: per-class Dice, curves, segmentation overlays |
 | `demo_run.py` | The live demonstration script for 3.2b |
 | `slurm/download.sh` | Fetch CIFAR-10 once, as a batch job on a CPU node |
@@ -309,9 +310,15 @@ extra latent capacity buys so little.
 
 Two consequences show up in the figures:
 
-* The codes spread to `|mu| = 24` when the prior is N(0, 1). Drawing
-  `z ~ N(0, I)` therefore lands in regions the encoder never visited, and about
-  a third of `samples.png` is noise rather than brains.
+* Drawing `z ~ N(0, I)` lands in regions the encoder never visited, and about a
+  third of `samples.png` is noise rather than brains. How it misses differs by
+  latent size, which is worth stating precisely: the 2-dimensional run's codes
+  simply run away, reaching `|mu| = 24` against a N(0, 1) prior. The
+  32-dimensional run's reach only 3.98, so it is not a matter of distance -
+  in 32 dimensions a draw from the prior sits near a shell of radius
+  sqrt(32) = 5.7, while the encoder's codes average 0.80 per dimension and so
+  fall well inside it. Same cause, different symptom: the KL term is too weak
+  to shape the aggregate posterior into the prior.
 * The manifold sweep was hard-coded to +/-2.5, which covered a small blob at the
   centre of a cloud spanning z1 in [-7, 25] - so every decoded tile looked
   identical. That was a plotting bug, now fixed: the grid is swept across the
