@@ -11,7 +11,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | 3.2a | ResNet-18 on CIFAR-10, >90% test accuracy | 1 | **93.87% in 3.8 min - MET** |
 | 3.2b | Inference + one training epoch live during the demo | 1 | script written, not yet rehearsed |
 | 3.2c | Mixed precision, 94% at V100-360s or better | 2 | AMP 9.1% faster, same accuracy |
-| 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | trained, both latent sizes |
+| 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | trained, beta swept, manifold rendered |
 | 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET** |
 | 4.4 Task 3 | OASIS GAN | (7/7 tier) | not attempting yet |
 
@@ -336,9 +336,41 @@ sbatch slurm/train_vae_beta.sh 2 50
 sbatch slurm/train_vae_beta.sh 2 150
 ```
 
-The expected trade is blurrier reconstructions for a latent space that matches
-its prior - so `samples.png` should stop producing noise, and the manifold
-should become a smooth sweep rather than a cloud with holes in it.
+### What the sweep found
+
+| run | beta | recon | KL (nats) | b*KL/loss | max abs mu | prior samples |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| latent 32 | 1 | 16366.8 | 66.53 | 0.40% | 3.98 | some noise |
+| latent 32 | **10** | 16430.3 | 19.33 | 1.16% | 3.39 | **all clean** |
+| latent 32 | 30 | 16495.0 | 8.91 | 1.60% | 3.87 | clean, blurrier |
+| latent 2 | 1 | 16899.6 | 10.85 | 0.06% | **24.33** | about a third noise |
+| latent 2 | **50** | 16863.4 | 2.95 | 0.87% | 3.76 | **all clean** |
+| latent 2 | 150 | 16914.2 | 1.15 | 1.01% | 3.87 | clean, blurrier |
+
+**beta 10 at latent 32 and beta 50 at latent 2** are the settings to present. Both
+give clean prior samples, and the reconstruction cost is 0.4% and *nothing* -
+the latent-2 reconstruction actually improved slightly at beta 50. The expected
+"blurry reconstructions for a well-behaved latent space" trade barely bites at
+this scale, which is itself the finding.
+
+The two latent sizes fail differently at beta=1, and saying so precisely matters.
+At latent 2 the codes run away to `|mu| = 24` and the fix is visibly one of
+distance: `max abs mu` falls to 3.76. At latent 32 the codes were never far -
+3.98 at beta 1 - yet the samples were still noisy, and raising beta still fixed
+them. There the mismatch is one of *shape*: a draw from N(0, I) in 32 dimensions
+sits near a shell of radius sqrt(32) = 5.7, while the encoder's codes averaged
+0.80 per dimension and fell well inside it. Beta reshapes the aggregate
+posterior; it does not merely shrink it.
+
+One reading trap, which the figures now label explicitly. The **raw KL falls** as
+beta rises - that is exactly what beta asks for - while the KL's **share of the
+optimised loss** (`beta*KL`) rises. Quoting one and calling it the other makes
+the sweep look self-contradictory.
+
+The sample-spread number is also not a diversity measure at low beta: 0.085 at
+beta 1 versus 0.035 at beta 10 for latent 32. The larger figure is noise, not
+variety. Only the decoded images settle that, which is why `compare_vae.py`
+prints brains under the curves.
 
 **The 30-epoch CIFAR baseline finished in under four minutes**, against a
 DAWNBench guideline of thirty. The time requirement was never going to bind
