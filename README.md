@@ -8,11 +8,11 @@ The notebook covering parts 1-3.1 lives in the course repository under
 
 | Part | Task | Marks | Status |
 | --- | --- | ---: | --- |
-| 3.2a | ResNet-18 on CIFAR-10, >90% test accuracy | 1 | code written, not yet run |
+| 3.2a | ResNet-18 on CIFAR-10, >90% test accuracy | 1 | **93.87% in 3.8 min - MET** |
 | 3.2b | Inference + one training epoch live during the demo | 1 | script written, not yet rehearsed |
-| 3.2c | Mixed precision, 94% at V100-360s or better | 2 | first controlled run queued |
-| 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | code written, queued |
-| 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | code written, not yet run |
+| 3.2c | Mixed precision, 94% at V100-360s or better | 2 | AMP 9.1% faster, same accuracy |
+| 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | trained, both latent sizes |
+| 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET** |
 | 4.4 Task 3 | OASIS GAN | (7/7 tier) | not attempting yet |
 
 ## Layout
@@ -23,7 +23,9 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `data.py` | CIFAR-10 transforms, loaders, and device selection |
 | `prepare_data.py` | One-off dataset download, to be run on a **CPU** node |
 | `train.py` | Training loop, one-cycle schedule, checkpointing, metrics |
-| `plot_run.py` | Turns a run's `metrics.json` into training curves and a summary |
+| `plot_run.py` | Turns a CIFAR run's `metrics.json` into curves and a summary |
+| `plot_vae.py` | VAE figures: curves, reconstructions, samples, the manifold |
+| `plot_unet.py` | UNet figures: per-class Dice, curves, segmentation overlays |
 | `demo_run.py` | The live demonstration script for 3.2b |
 | `slurm/download.sh` | Fetch CIFAR-10 once, as a batch job on a CPU node |
 | `slurm/smoke.sh` | Five batches on a GPU node - run this before any long job |
@@ -268,6 +270,40 @@ fallback if the interactive session is lost.
 **The demonstration is given from a MacBook, from a fresh clone.** SSH access,
 the UQ VPN and `~/.ssh/config` must all be verified on that machine, not only on
 the machine the code was written on.
+
+## Results so far
+
+All measured on an A100-PCIE-40GB, 9 September 2026.
+
+| Run | Result | Time |
+| --- | --- | --- |
+| 3.2a baseline | **93.87%** test accuracy - target met | 230.7 s |
+| 3.2c mixed precision | 93.86% - unchanged within noise | 209.7 s (**9.1% faster**) |
+| Task 1 VAE, latent 32 | best validation loss 16382 at epoch 14 | 181.7 s |
+| Task 1 VAE, latent 2 | best validation loss 16885 at epoch 23 | 179.7 s |
+| Task 2 UNet | **worst class DSC 0.9646** - every label above 0.9 | 17.7 min |
+
+Three things in that table are worth being able to explain, because they are
+what a demonstrator will ask about.
+
+**Mixed precision bought only 9%.** Accuracy is unchanged, so nothing was lost
+numerically - but a 9% speed-up is modest for half precision. ResNet-18 on
+32x32 inputs is small enough that an A100 is never saturated: the bottleneck is
+kernel launch overhead and the data loader, not arithmetic. That is the argument
+for a larger batch size as the next 3.2c experiment, and it is why the DAWNBench
+reference solutions raise batch size and use channels-last together with AMP
+rather than relying on AMP alone.
+
+**The 2-dimensional VAE scores within 3% of the 32-dimensional one.** Two
+numbers should not describe a brain slice nearly as well as thirty-two. Either
+OASIS slices really are that stereotyped, or the larger model has suffered
+posterior collapse - the KL term driving most dimensions to the prior, leaving
+the model using only a handful. `plot_vae.py` counts the dimensions whose `mu`
+actually varies, which settles it.
+
+**The 30-epoch CIFAR baseline finished in under four minutes**, against a
+DAWNBench guideline of thirty. The time requirement was never going to bind
+here; the accuracy one is what mattered.
 
 ## Queueing work in parallel
 
