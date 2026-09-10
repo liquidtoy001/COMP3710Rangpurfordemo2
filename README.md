@@ -51,6 +51,25 @@ The notebook covering parts 1-3.1 lives in the course repository under
 Checkpoints, datasets and Slurm logs are deliberately not tracked; see
 `.gitignore`.
 
+## results/
+
+`runs/` is gitignored, because it holds 45 MB checkpoints and the dataset. But
+that also hid the evidence, and a repository with no results in it does not show
+that anything worked. `results/` therefore carries a curated copy of what the
+runs produced:
+
+| Per run | Contents |
+| --- | --- |
+| `metrics.json` | Arguments, device, timings and the full per-epoch history |
+| `history.csv` | The same history as plain text, one row per epoch |
+| Selected figures | The ones that are evidence for a claim, not every curve |
+
+Checkpoints stay out. They are large, and inference for the demonstration runs
+on the cluster where they already live.
+
+Regenerate the figures from a run directory with `plot_run.py`, `plot_vae.py` or
+`plot_unet.py`, and the sweep comparisons with `compare_vae.py`.
+
 ## Working arrangement
 
 Code is edited and committed **locally**, then pulled onto the cluster. The
