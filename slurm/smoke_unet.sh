@@ -7,9 +7,9 @@
 #SBATCH --output=logs/unetsmoke_%j.out
 #SBATCH --error=logs/unetsmoke_%j.err
 
-# One epoch on 128 slices, on the usually-free a100-test partition. Confirms the
-# mask pairing, the label remapping, the model, the Dice metric and the artefact
-# writing before a real run is queued.
+# One epoch on 128 slices, on the a100-test partition, which usually starts
+# sooner than comp3710. Confirms the mask pairing, the label remapping, the
+# model, the Dice metric and the artefact writing before a real run is queued.
 #
 # a100-test sets AllowAccounts=ALL, so no --account is needed. --gres and
 # --cpus-per-task are spelled out because Slurm's defaults are one CPU and no

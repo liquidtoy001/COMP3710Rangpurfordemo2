@@ -7,8 +7,8 @@
 #SBATCH --output=logs/vaesmoke_%j.out
 #SBATCH --error=logs/vaesmoke_%j.err
 
-# One epoch on 128 images, on the usually-free a100-test partition. Run this
-# before queueing a real VAE run.
+# One epoch on 128 images, on the a100-test partition, which usually starts
+# sooner than comp3710. Run this before queueing a real VAE run.
 #
 # This exists as a script rather than an sbatch --wrap one-liner for a reason:
 # a bare --wrap inherits Slurm's defaults, which are one CPU and *no GPU*. The

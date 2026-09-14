@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=d2-unet-demo
-#SBATCH --partition=a100-test
-#SBATCH --gres=gpu:1
+#SBATCH --partition=cpu
 #SBATCH --cpus-per-task=4
 #SBATCH --time=00:10:00
 #SBATCH --output=logs/unetdemo_%j.out
@@ -9,26 +8,26 @@
 
 # Batch fallback for the live UNet inference (Part 4, Task 2).
 #
-# The demonstration itself should run demo_unet.py inside an interactive
-# session that is already allocated, so the demonstrator watches the output
-# appear; see the README. This script exists for when that session is lost.
+# The demonstration itself runs demo_unet.py through srun, so the demonstrator
+# watches the output appear; see the README. This script exists for when the
+# terminal is lost.
 #
-# a100-test rather than comp3710: it sets AllowAccounts=ALL and is usually free,
-# while comp3710's A100s are normally all held. Inference takes well under a
-# minute, inside a100-test's default time limit.
+# On the cpu partition, not a GPU one. Inference is only forward passes, and in
+# rehearsal on 14 Sep 2026 all 544 test slices took 85 s on 4 cores (2 min end
+# to end), reproducing the committed Dice to 4.3e-6. The cpu partition allocated
+# at once, while a job on a100-test's two GPUs waited about 13 minutes.
 #
 # Arguments pass straight through to demo_unet.py:
 #     sbatch slurm/demo_unet.sh --slices 12 200 431
 #     sbatch slurm/demo_unet.sh --random 4
 
 echo "job $SLURM_JOB_ID on $(hostname), started $(date)"
-nvidia-smi
 
 export PYTHONUNBUFFERED=1
 
 source $HOME/miniconda3/bin/activate
 conda activate torch
 
-python demo_unet.py --checkpoint runs/unet/best.pt "$@"
+python demo_unet.py --checkpoint runs/unet/best.pt --device cpu "$@"
 
 echo "finished $(date)"

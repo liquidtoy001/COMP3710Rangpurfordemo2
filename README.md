@@ -9,10 +9,10 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | Part | Task | Marks | Status |
 | --- | --- | ---: | --- |
 | 3.2a | ResNet-18 on CIFAR-10, >90% test accuracy | 1 | **93.87% in 3.8 min - MET** |
-| 3.2b | Inference + one training epoch live during the demo | 1 | script written, not yet rehearsed |
+| 3.2b | Inference + one training epoch live during the demo | 1 | rehearsed on Rangpur 14 Sep: 93.87% reproduced, epoch 9.0 s |
 | 3.2c | Mixed precision, 94% at V100-360s or better | 2 | AMP 9.1% faster, same accuracy |
 | 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | trained, beta swept, manifold rendered |
-| 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET**; live inference script written, not yet rehearsed |
+| 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET**; live inference rehearsed 14 Sep, Dice reproduced |
 | 4.4 Task 3 | OASIS GAN | (7/7 tier) | not attempting yet |
 
 ## Results at a glance
@@ -82,21 +82,22 @@ during the demonstration - see [Demonstration day](#demonstration-day).
 | `demo_unet.py` | The live UNet inference for Task 2, with a picture of chosen slices |
 | `slurm/download.sh` | Fetch CIFAR-10 once, as a batch job on a CPU node |
 | `slurm/smoke.sh` | Five batches on a GPU node - run this before any long job |
-| `slurm/smoke_test_partition.sh` | The same check on `a100-test`, which is usually free |
+| `slurm/smoke_test_partition.sh` | The same check on `a100-test`, which usually starts sooner |
 | `slurm/train.sh` | The full 30-epoch baseline run |
 | `slurm/train_amp.sh` | The same run with mixed precision, for 3.2c |
 | `slurm/demo.sh` | Batch fallback for the live 3.2 run |
-| `slurm/demo_unet.sh` | Batch fallback for the live UNet inference, on `a100-test` |
+| `slurm/demo_unet.sh` | Batch fallback for the live UNet inference, on the `cpu` partition |
+| `slurm/live.sh` | Runs a command under `srun` with the environment active, for the live demonstration |
 | `oasis.py` | OASIS dataset: paths, mask pairing, label remapping |
 | `vae.py` | The convolutional VAE |
 | `train_vae.py` | Trains it and saves the manifold visualisation data |
-| `slurm/smoke_vae.sh` | One epoch on 128 images, on the free `a100-test` |
+| `slurm/smoke_vae.sh` | One epoch on 128 images, on `a100-test` |
 | `slurm/train_vae.sh` | 30-epoch VAE run, 32-dimensional latent |
 | `slurm/train_vae_latent2.sh` | The same with a 2D latent, for the decoded grid |
 | `slurm/train_vae_beta.sh` | Beta sweep: `sbatch ... <latent_dim> <beta>` |
 | `unet.py` | The UNet, the Dice loss and the per-class Dice metric |
 | `train_unet.py` | Trains it and reports per-class DSC |
-| `slurm/smoke_unet.sh` | One epoch on 128 slices, on the free `a100-test` |
+| `slurm/smoke_unet.sh` | One epoch on 128 slices, on `a100-test` |
 | `slurm/train_unet.sh` | The 30-epoch UNet run |
 | `explore_oasis.py` | Read-only probe of the OASIS dataset, before any Part 4 code |
 | `slurm/explore_oasis.sh` | Runs that probe on a CPU node |
@@ -164,7 +165,10 @@ does nothing for queue time.
 The practical consequence: a smoke test that needs seconds of compute can wait
 hours behind half-hour training jobs. Use `slurm/smoke_test_partition.sh`, which
 targets `a100-test` (`AllowAccounts=ALL`, nodes `a100-a` and `a100-b`) and
-normally starts at once. Keep real training on `comp3710`.
+usually starts much sooner. It is not always free, though: its `test` QoS caps
+a job at 20 minutes and one job per user, and its two GPUs can be reserved for
+higher-priority partitions - a job there waited about 13 minutes on 14 September.
+Keep real training on `comp3710`.
 
 **A queue full of jobs that will never run.** `squeue -p comp3710` shows dozens
 of old jobs stuck at `Reason=PartitionConfig` - other students who hit the same
@@ -320,68 +324,109 @@ spot.
 Two things have to happen live on the cluster, because the lab sheet says so.
 Training was done beforehand and its evidence is committed in `results/`;
 neither live script overwrites the checkpoint it loads, so both are safe to run
-twice.
+twice. Both were rehearsed end to end on 14 September 2026.
 
-| Requirement | Live script | Loads |
-| --- | --- | --- |
-| Part 3.2, requirement 2: run inference and one epoch of training | `demo_run.py` | `runs/baseline/best.pt` |
-| Part 4, Task 2: run inference on a test set and show the model working | `demo_unet.py` | `runs/unet/best.pt` |
+| Requirement | Live script | Loads | Runs on | Rehearsal |
+| --- | --- | --- | --- | --- |
+| Part 3.2, requirement 2: run inference and one epoch of training | `demo_run.py` | `runs/baseline/best.pt` | an A100 on `a100-test` | 93.87% reproduced; inference 9.8 s, one epoch 9.0 s |
+| Part 4, Task 2: run inference on a test set and show the model working | `demo_unet.py` | `runs/unet/best.pt` | 4 cores on `cpu` | Dice reproduced to 4.3e-6; 2 min end to end |
 
-### Hold a GPU before the demonstrator arrives
+### What the rehearsal changed
 
-Use `a100-test`, not `comp3710`. It sets `AllowAccounts=ALL` and is usually
-free, whereas `comp3710`'s A100s are normally all held and a job can wait hours.
-Both live runs finish in under a minute.
+The first plan was to hold a GPU interactively before the demonstrator arrived.
+The rehearsal showed that does not work, for three reasons measured on the day:
 
-```bash
-tmux new -s demo
-srun --partition=a100-test --gres=gpu:1 --cpus-per-task=4 --time=00:30:00 --pty bash
-source $HOME/miniconda3/bin/activate && conda activate torch
-cd ~/COMP3710Rangpurfordemo2
-ls runs/baseline/best.pt runs/unet/best.pt
-```
+* **`a100-test` is not usually free.** It has two GPUs (`a100-a`, `a100-b`),
+  and both can be reserved for jobs from higher-priority partitions. A job there
+  waited about 13 minutes.
+* **Its `test` QoS caps a job at 20 minutes** (`sacctmgr show qos`) and allows
+  **one job per user** (`QOSMaxJobsPerUserLimit`). A 30-minute request is
+  rejected outright with `QOSMaxWallDurationPerJobLimit`, so a GPU cannot be
+  held for long in advance.
+* **An interactive allocation starts its clock when it arrives, not when it is
+  used.** That 13-minute wait ended while the terminal was not being watched, and
+  the 10-minute allocation expired unused.
 
-If `a100-test` is busy, use `--partition=comp3710 --account=comp3710` instead.
-The `tmux` session keeps the allocation alive if the SSH connection drops.
+So each live run hands its command straight to `srun`, through
+`slurm/live.sh`. The run starts the moment the allocation arrives, none of the
+allocation is wasted, and the output still streams into the terminal. And Task
+2's inference, which is forward passes only, runs on the `cpu` partition, which
+allocated at once.
+
+Never run either script on a login node. By mistake one rehearsal did: inference
+crawled on the CPU, and the training epoch then failed with `BlockingIOError` in
+`os.fork()`, because login nodes limit how many processes a user may start and
+the data loader could not start its workers.
 
 ### Part 3.2: inference, then one epoch of training
 
+From `~/COMP3710Rangpurfordemo2` on a login node, inside `tmux` so a dropped SSH
+connection does not cancel the job. Submit it when the demonstration starts, and
+show the notebook and GitHub while it queues:
+
 ```bash
-python demo_run.py --checkpoint runs/baseline/best.pt --data-dir $HOME/data | tee logs/demo_day_cifar.log
+srun --partition=a100-test --gres=gpu:1 --cpus-per-task=4 --time=00:10:00 bash slurm/live.sh python demo_run.py --checkpoint runs/baseline/best.pt --data-dir $HOME/data | tee logs/demo_day_cifar.log
 ```
 
-It prints test accuracy with a per-class breakdown, then trains exactly one
-epoch and reports how long it took.
+It prints the job id and the node, so it is visibly running on the cluster; then
+test accuracy with a per-class breakdown, then one epoch of training with its
+time. In rehearsal (job 590170, `a100-b`):
+
+| | |
+| --- | --- |
+| test accuracy | 93.87%, the recorded figure; test loss 0.2039 |
+| inference, 10,000 images | 9.77 s, mostly starting the data loader's workers |
+| one epoch, 390 batches | 9.04 s |
+| test accuracy after that epoch | 92.60% |
+
+**Why one more epoch lowers test accuracy.** Training ended on a one-cycle
+schedule, whose learning rate falls to about 4e-7 by the last step. The demo
+epoch uses a constant 0.01, some 25,000 times larger, with the optimiser's
+momentum starting from zero. That step moves the weights out of the minimum the
+annealing settled into, and one epoch is too short to settle again. It is not
+underfitting: training accuracy for that epoch was 98.50%. The checkpoint on
+disk is untouched, since the epoch trains a copy in memory.
+
+If `a100-test` is still queueing when the demonstration reaches this point,
+check the estimated start with `squeue --me --start`, or show the batch run below.
 
 ### Task 2: UNet inference on the test split
 
 ```bash
-python demo_unet.py | tee logs/demo_day_unet.log
+srun --partition=cpu --cpus-per-task=4 --time=00:10:00 bash slurm/live.sh python demo_unet.py --device cpu --slices 12 200 431 | tee logs/demo_day_unet.log
 ```
+
+Replace `12 200 431` with slices the demonstrator chooses, or use `--random 4`,
+which prints its seed. Leaving both out draws four slices spread evenly across
+the split.
 
 It runs over all 544 test slices and prints each class's Dice coefficient
 against the 0.9 requirement, beside the figures the training run recorded -
 the same ones committed in `results/unet/metrics.json`. A live run that
-reproduces them is the evidence that the committed results are real.
+reproduces them is the evidence that the committed results are real. In
+rehearsal (job 590127, `vcpu-2`) inference took 85.3 s, and the largest
+difference from the committed figures was 4.3e-6, which is floating-point
+difference between CPU and GPU arithmetic.
 
-It then draws four slices, spread evenly across the split rather than picked.
-Better still, let the demonstrator choose:
+It then draws the slices: input, ground truth, prediction, and the pixels where
+prediction and truth disagree. The disagreeing pixels are scattered single
+pixels along the boundaries between tissues, which is why Dice sits at 0.96-0.98
+rather than 1. The picture is drawn with Pillow, because matplotlib is not
+installed on Rangpur, and written to `runs/demo/`. The script prints the `scp`
+command that copies it to the laptop. Create `runs/demo/` on the laptop first:
+if the folder does not exist, `scp` writes the image to a file named `demo`.
+
+### If the terminal is lost
+
+A job started through `srun` inside `tmux` survives a dropped SSH connection:
+reconnect and run `tmux attach -t demo`. If the session was opened on a
+different login node, `ssh login0` first. The output is also in the `tee` log.
+
+Without a terminal at all, both runs exist as batch jobs:
 
 ```bash
-python demo_unet.py --slices 12 200 431     # their choice of slices
-python demo_unet.py --random 4              # four at random; the seed is printed
-```
-
-Each picture shows input, ground truth, prediction, and the pixels where
-prediction and truth disagree. It is drawn with Pillow, because matplotlib is not
-installed on Rangpur, and written to `runs/demo/`; the script prints the `scp`
-command that copies it to the laptop.
-
-### If the interactive session is lost
-
-```bash
-sbatch slurm/demo.sh                          # part 3.2, on comp3710
-sbatch slurm/demo_unet.sh --slices 12 200     # Task 2, on a100-test; arguments pass through
+sbatch slurm/demo.sh                              # part 3.2, on comp3710
+sbatch slurm/demo_unet.sh --slices 12 200 431     # Task 2, on cpu; arguments pass through
 ```
 
 ### Before the day
@@ -389,8 +434,8 @@ sbatch slurm/demo_unet.sh --slices 12 200     # Task 2, on a100-test; arguments 
 * **The demonstration is given from a MacBook, from a fresh clone.** SSH access,
   the UQ VPN and `~/.ssh/config` must all be verified on that machine, not only
   on the machine the code was written on.
-* Rehearse both live commands once, end to end, on the cluster.
 * Check both checkpoints are still on the cluster: they are not in git.
+* `git pull` on the cluster, so `slurm/live.sh` is there.
 
 ## Results so far
 

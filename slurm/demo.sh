@@ -21,10 +21,12 @@
 
 # The live demonstration run: inference plus one epoch of training.
 #
-# On the day, prefer running demo_run.py directly inside an interactive session
-# that is already allocated (see README), so the demonstrator watches the output
-# appear rather than waiting in the queue. This batch version exists as the
-# fallback if the interactive session is lost.
+# On the day, run demo_run.py through srun and slurm/live.sh (see README), so
+# the demonstrator watches the output appear. This batch version exists as the
+# fallback if the terminal is lost. It queues on comp3710, whose 12-hour limit
+# is generous but whose GPUs are usually all held; a100-test is capped at 20
+# minutes and one job per user, so this fallback does not compete with a live
+# srun already waiting there.
 
 echo "job $SLURM_JOB_ID on $(hostname), started $(date)"
 nvidia-smi
