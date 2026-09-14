@@ -10,7 +10,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | --- | --- | ---: | --- |
 | 3.2a | ResNet-18 on CIFAR-10, >90% test accuracy | 1 | **93.87% in 3.8 min - MET** |
 | 3.2b | Inference + one training epoch live during the demo | 1 | rehearsed on Rangpur 14 Sep: 93.87% reproduced, epoch 9.0 s |
-| 3.2c | Mixed precision, 94% at V100-360s or better | 2 | AMP 9.1% faster, same accuracy |
+| 3.2c | Mixed precision, 94% at V100-360s or better | 2 | AMP 93.86%, 9.1% faster - not yet met; flip test-time augmentation written, not yet run |
 | 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | trained, beta swept, manifold rendered |
 | 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET**; live inference rehearsed 14 Sep, Dice reproduced |
 | 4.4 Task 3 | OASIS GAN | (7/7 tier) | not attempting yet |
@@ -87,6 +87,8 @@ during the demonstration - see [Demonstration day](#demonstration-day).
 | `slurm/train_amp.sh` | The same run with mixed precision, for 3.2c |
 | `slurm/demo.sh` | Batch fallback for the live 3.2 run |
 | `slurm/demo_unet.sh` | Batch fallback for the live UNet inference, on the `cpu` partition |
+| `tta_eval.py` | 3.2c: scores the mixed-precision checkpoint with test-time flip averaging |
+| `slurm/tta.sh` | Runs that scoring on `a100-test` |
 | `slurm/live.sh` | Runs a command under `srun` with the environment active, for the live demonstration |
 | `oasis.py` | OASIS dataset: paths, mask pairing, label remapping |
 | `vae.py` | The convolutional VAE |
@@ -459,6 +461,27 @@ kernel launch overhead and the data loader, not arithmetic. That is the argument
 for a larger batch size as the next 3.2c experiment, and it is why the DAWNBench
 reference solutions raise batch size and use channels-last together with AMP
 rather than relying on AMP alone.
+
+**3.2c is 14 images short, and the next step changes no training.** The AMP
+run's 93.86% is 14 of 10,000 test images below 94%. `tta_eval.py` scores the
+same weights with test-time augmentation: each image is also classified mirrored
+left to right, and the two softmax outputs are averaged. The training time on
+record is unchanged because nothing is retrained.
+
+Every choice was fixed in the script before it was first run, because the test
+set is to be scored once, not searched: the final-epoch AMP checkpoint (epoch 30,
+so not one picked for its test score), a horizontal flip and nothing else,
+softmax averaging, and full-precision evaluation, so the plain score must
+reproduce 93.86% exactly. It also reports how many test images the flip corrected
+and how many it broke, since one accuracy figure on 10,000 images has a standard
+error of about 0.24 points. Two things are not settled by any script: whether
+the demonstrator accepts flip averaging as part of the model, and how an A100's
+209.7 s (167.3 s of it training, the rest per-epoch evaluation) compares with
+the lab sheet's 360 s on a V100.
+
+```bash
+sbatch slurm/tta.sh
+```
 
 **The 2-dimensional VAE scores within 3% of the 32-dimensional one, and the
 reason is the opposite of what was expected.** Posterior collapse was the first
