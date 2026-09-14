@@ -12,7 +12,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | 3.2b | Inference + one training epoch live during the demo | 1 | script written, not yet rehearsed |
 | 3.2c | Mixed precision, 94% at V100-360s or better | 2 | AMP 9.1% faster, same accuracy |
 | 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | trained, beta swept, manifold rendered |
-| 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET** |
+| 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET**; live inference script written, not yet rehearsed |
 | 4.4 Task 3 | OASIS GAN | (7/7 tier) | not attempting yet |
 
 ## Layout
@@ -28,12 +28,14 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | `compare_vae.py` | Puts several VAE runs side by side, for the beta sweep |
 | `plot_unet.py` | UNet figures: per-class Dice, curves, segmentation overlays |
 | `demo_run.py` | The live demonstration script for 3.2b |
+| `demo_unet.py` | The live UNet inference for Task 2, with a picture of chosen slices |
 | `slurm/download.sh` | Fetch CIFAR-10 once, as a batch job on a CPU node |
 | `slurm/smoke.sh` | Five batches on a GPU node - run this before any long job |
 | `slurm/smoke_test_partition.sh` | The same check on `a100-test`, which is usually free |
 | `slurm/train.sh` | The full 30-epoch baseline run |
 | `slurm/train_amp.sh` | The same run with mixed precision, for 3.2c |
-| `slurm/demo.sh` | Batch fallback for the live run |
+| `slurm/demo.sh` | Batch fallback for the live 3.2 run |
+| `slurm/demo_unet.sh` | Batch fallback for the live UNet inference, on `a100-test` |
 | `oasis.py` | OASIS dataset: paths, mask pairing, label remapping |
 | `vae.py` | The convolutional VAE |
 | `train_vae.py` | Trains it and saves the manifold visualisation data |
@@ -264,33 +266,80 @@ spot.
 
 ## Demonstration day
 
-Requirement 2 of part 3.2 says the model must run inference and a single epoch
-of training on the cluster **during the demonstration**, so the split is:
+Two things have to happen live on the cluster, because the lab sheet says so.
+Training was done beforehand and its evidence is committed in `results/`;
+neither live script overwrites the checkpoint it loads, so both are safe to run
+twice.
 
-* **beforehand** - the full training run, with `metrics.json` and the training
-  log committed as evidence
-* **live** - `demo_run.py`, which loads the checkpoint, runs inference over the
-  test set with a per-class breakdown, then trains exactly one epoch. It does
-  not overwrite the checkpoint, so it is safe to run twice.
+| Requirement | Live script | Loads |
+| --- | --- | --- |
+| Part 3.2, requirement 2: run inference and one epoch of training | `demo_run.py` | `runs/baseline/best.pt` |
+| Part 4, Task 2: run inference on a test set and show the model working | `demo_unet.py` | `runs/unet/best.pt` |
 
-Hold an interactive GPU session **before the demonstrator arrives**, so no time
-is lost in the queue:
+### Hold a GPU before the demonstrator arrives
+
+Use `a100-test`, not `comp3710`. It sets `AllowAccounts=ALL` and is usually
+free, whereas `comp3710`'s A100s are normally all held and a job can wait hours.
+Both live runs finish in under a minute.
 
 ```bash
 tmux new -s demo
-srun --partition=comp3710 --account=comp3710 --gres=gpu:1 --cpus-per-task=4 \n    --time=01:00:00 --pty bash
-conda activate torch
+srun --partition=a100-test --gres=gpu:1 --cpus-per-task=4 --time=00:30:00 --pty bash
+source $HOME/miniconda3/bin/activate && conda activate torch
 cd ~/COMP3710Rangpurfordemo2
-# then, when the demonstrator is watching:
-python demo_run.py --checkpoint runs/baseline/best.pt --data-dir $HOME/data | tee logs/demo_day.log
+ls runs/baseline/best.pt runs/unet/best.pt
 ```
 
-`tee` keeps a copy of what the demonstrator saw. `slurm/demo.sh` is the batch
-fallback if the interactive session is lost.
+If `a100-test` is busy, use `--partition=comp3710 --account=comp3710` instead.
+The `tmux` session keeps the allocation alive if the SSH connection drops.
 
-**The demonstration is given from a MacBook, from a fresh clone.** SSH access,
-the UQ VPN and `~/.ssh/config` must all be verified on that machine, not only on
-the machine the code was written on.
+### Part 3.2: inference, then one epoch of training
+
+```bash
+python demo_run.py --checkpoint runs/baseline/best.pt --data-dir $HOME/data | tee logs/demo_day_cifar.log
+```
+
+It prints test accuracy with a per-class breakdown, then trains exactly one
+epoch and reports how long it took.
+
+### Task 2: UNet inference on the test split
+
+```bash
+python demo_unet.py | tee logs/demo_day_unet.log
+```
+
+It runs over all 544 test slices and prints each class's Dice coefficient
+against the 0.9 requirement, beside the figures the training run recorded -
+the same ones committed in `results/unet/metrics.json`. A live run that
+reproduces them is the evidence that the committed results are real.
+
+It then draws four slices, spread evenly across the split rather than picked.
+Better still, let the demonstrator choose:
+
+```bash
+python demo_unet.py --slices 12 200 431     # their choice of slices
+python demo_unet.py --random 4              # four at random; the seed is printed
+```
+
+Each picture shows input, ground truth, prediction, and the pixels where
+prediction and truth disagree. It is drawn with Pillow, because matplotlib is not
+installed on Rangpur, and written to `runs/demo/`; the script prints the `scp`
+command that copies it to the laptop.
+
+### If the interactive session is lost
+
+```bash
+sbatch slurm/demo.sh                          # part 3.2, on comp3710
+sbatch slurm/demo_unet.sh --slices 12 200     # Task 2, on a100-test; arguments pass through
+```
+
+### Before the day
+
+* **The demonstration is given from a MacBook, from a fresh clone.** SSH access,
+  the UQ VPN and `~/.ssh/config` must all be verified on that machine, not only
+  on the machine the code was written on.
+* Rehearse both live commands once, end to end, on the cluster.
+* Check both checkpoints are still on the cluster: they are not in git.
 
 ## Results so far
 
