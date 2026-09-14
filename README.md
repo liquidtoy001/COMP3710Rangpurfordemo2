@@ -15,6 +15,57 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET**; live inference script written, not yet rehearsed |
 | 4.4 Task 3 | OASIS GAN | (7/7 tier) | not attempting yet |
 
+## Results at a glance
+
+Every figure below is committed in [`results/`](results/), beside the
+`metrics.json` and per-epoch `history.csv` it was drawn from. The sections further
+down explain how each was produced and what it shows.
+
+### Part 3.2 - ResNet-18 on CIFAR-10
+
+**93.87% test accuracy** after 30 epochs in 230.7 s on one A100, against a target
+of 90% within thirty minutes. With mixed precision the same run reached 93.86% in
+209.7 s.
+
+![Training curves for the ResNet-18 baseline: accuracy, loss, learning rate and time per epoch](results/baseline/curves.png)
+
+More in [Results so far](#results-so-far).
+
+### Part 4, Task 1 - a VAE of OASIS brain slices, and its manifold
+
+The manifold of a two-dimensional latent space: every point of the plane decoded
+into a brain (left), and where the 544 test images land in it (right).
+
+![The VAE's two-dimensional latent plane decoded into brains, beside a scatter of where the test images are encoded](results/vae_l2_beta50/latent.png)
+
+Brains the 32-dimensional model invented, decoded from random draws of the prior:
+
+![Sixteen brain slices decoded from random points in the 32-dimensional latent space](results/vae_l32_beta10/samples.png)
+
+At the default beta = 1 about a third of such samples were noise. The sweep that
+diagnosed why, and chose beta = 10 for this model:
+
+![Beta sweep for the 32-dimensional VAE: reconstruction loss, latent scale and KL against beta, with prior samples for each setting](results/vae_beta_sweep_latent32.png)
+
+More in [What the sweep found](#what-the-sweep-found) and
+[Task 1: the VAE](#task-1-the-vae).
+
+### Part 4, Task 2 - UNet segmentation of OASIS
+
+**Every class above the required 0.9 Dice** on the 544 test slices: 0.9993 for
+background, then 0.9646, 0.9655 and 0.9791.
+
+![Per-class Dice over training and on the test split, against the 0.9 requirement](results/unet/dice.png)
+
+Input, ground truth, prediction, and the pixels where prediction and truth
+disagree. On these slices about 1% of pixels disagree, mostly along the
+boundaries between tissues.
+
+![Four OASIS test slices with their ground-truth and predicted segmentations and the disagreeing pixels](results/unet/segmentations.png)
+
+More in [Task 2: the UNet](#task-2-the-unet). This inference is also run live
+during the demonstration - see [Demonstration day](#demonstration-day).
+
 ## Layout
 
 | File | Purpose |
