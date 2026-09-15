@@ -19,9 +19,10 @@
 # leaving ten minutes' margin, so if the run is not finished, submit the same
 # command again: it resumes from where it stopped, with its logs appended.
 #
-# Step counts. The defaults below are starting points for the batch sizes
-# given; set them from the milliseconds per step that slurm/smoke_gan.sh
-# measured, so a run fits in one or two jobs.
+# Step counts, set from what slurm/smoke_gan.sh measured on an A100 (job
+# 590977): 42 ms per step at 64x64, 97 ms at 128x128 with batch 64, and 188 ms
+# at 256x256 with batch 32. So 40,000 steps at 128 take about 65 minutes and
+# 50,000 at 256 about 157, each inside one job's 170 minutes of training.
 #
 # No --mem, deliberately: the nodes advertise mem=1M and a --mem request pends
 # forever. --account=comp3710 is required on this partition.
@@ -30,7 +31,7 @@ RESOLUTION=${1:?usage: sbatch slurm/train_gan.sh <resolution> [steps]}
 case "$RESOLUTION" in
     64)  DEFAULT_STEPS=20000; BATCH=64 ;;
     128) DEFAULT_STEPS=40000; BATCH=64 ;;
-    256) DEFAULT_STEPS=60000; BATCH=32 ;;
+    256) DEFAULT_STEPS=50000; BATCH=32 ;;
     *)   echo "resolution must be 64, 128 or 256"; exit 1 ;;
 esac
 STEPS=${2:-$DEFAULT_STEPS}

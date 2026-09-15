@@ -148,7 +148,7 @@ def plot_distances(run_dir: Path, arrays: dict, report: dict) -> None:
                     label="5th percentile of real")
     axes[0].set_title("Distance to the nearest training slice\n(copies would pile up at the left)")
 
-    axes[1].hist(arrays["reference_to_reference"], bins=bins, density=True, alpha=0.6, color=REAL_COLOUR,
+    axes[1].hist(arrays["real_to_real"], bins=bins, density=True, alpha=0.6, color=REAL_COLOUR,
                  label="random real training slices")
     axes[1].hist(arrays["generated_to_generated"], bins=bins, density=True, alpha=0.6, color=GENERATED_COLOUR,
                  label="generated slices")
@@ -166,17 +166,16 @@ def plot_latent(run_dir: Path, arrays: dict, report: dict) -> None:
     if "latent2_test" not in arrays:
         return
     fig, axis = plt.subplots(figsize=(7.5, 6.5))
-    axis.scatter(*arrays["latent2_reference"].T, s=8, alpha=0.4, color=REFERENCE_COLOUR,
-                 label="random real training slices")
-    axis.scatter(*arrays["latent2_test"].T, s=8, alpha=0.6, color=REAL_COLOUR, label="real test slices")
+    axis.scatter(*arrays["latent2_test"].T, s=8, alpha=0.4, color=REFERENCE_COLOUR, label="real test slices")
+    axis.scatter(*arrays["latent2_real"].T, s=8, alpha=0.6, color=REAL_COLOUR, label="random real training slices")
     axis.scatter(*arrays["latent2_generated"].T, s=8, alpha=0.6, color=GENERATED_COLOUR, label="generated slices")
     title = "Real and generated slices in the Task 1 VAE's 2D latent space"
     if "precision_recall" in report:
         pr = report["precision_recall"]
-        title += (f"\n32D latent: precision {pr['generated_vs_test']['precision']:.2f}, "
-                  f"recall {pr['generated_vs_test']['recall']:.2f} "
-                  f"(random real training slices: {pr['reference_vs_test']['precision']:.2f}, "
-                  f"{pr['reference_vs_test']['recall']:.2f})")
+        title += (f"\n32D latent: precision {pr['generated']['precision']:.2f}, "
+                  f"recall {pr['generated']['recall']:.2f} "
+                  f"(random real training slices: {pr['reference']['precision']:.2f}, "
+                  f"{pr['reference']['recall']:.2f})")
     axis.set_title(title, fontsize=10)
     axis.set_xlabel("z1")
     axis.set_ylabel("z2")
@@ -188,13 +187,13 @@ def plot_latent(run_dir: Path, arrays: dict, report: dict) -> None:
 
 
 def plot_tissue(run_dir: Path, arrays: dict) -> None:
-    if "fractions_test" not in arrays:
+    if "fractions_real" not in arrays:
         return
     fig, axes = plt.subplots(1, 4, figsize=(17, 4))
     for c, axis in enumerate(axes):
-        real, generated = arrays["fractions_test"][:, c], arrays["fractions_generated"][:, c]
+        real, generated = arrays["fractions_real"][:, c], arrays["fractions_generated"][:, c]
         bins = np.linspace(min(real.min(), generated.min()), max(real.max(), generated.max()), 30)
-        axis.hist(real, bins=bins, density=True, alpha=0.6, color=REAL_COLOUR, label="real test slices")
+        axis.hist(real, bins=bins, density=True, alpha=0.6, color=REAL_COLOUR, label="real training slices")
         axis.hist(generated, bins=bins, density=True, alpha=0.6, color=GENERATED_COLOUR, label="generated")
         axis.set_title(f"{CLASS_NAMES[c]}: share of the slice")
         axis.grid(True, alpha=0.3)

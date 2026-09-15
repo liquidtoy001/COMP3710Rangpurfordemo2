@@ -4,21 +4,22 @@ The lab sheet sets the bar for full marks: generated images must "look like
 unique brains", and mode collapse "need[s] to be fully resolved". Looking at a
 grid of samples cannot settle either - a grid can be chosen, and a generator
 that copies its training set looks perfect. So this script measures, and every
-measurement is paired with the same measurement on **real slices the GAN never
-saw** (the test split), which is what the generated figure should resemble:
+measurement on generated slices is paired with the same measurement on real
+slices:
 
 1. **Not copies.** For each generated slice, the nearest of the 9,664 training
    slices. Compared with the same distance for real test slices: a new brain
    from a new person sits about as far from the training set as a test slice
    does, while a memorised one sits much closer.
 2. **Not collapsed.** For each generated slice, its nearest other generated
-   slice, against the same for real slices. A collapsed generator draws
-   near-duplicates, so its nearest-neighbour distances fall far below the real
-   ones. This detects collapse and nothing else: noise is varied too, and a
+   slice, against the same for a random sample of real training slices. A
+   collapsed generator draws near-duplicates, so its nearest-neighbour
+   distances fall far below the real ones. This detects collapse and nothing else: noise is varied too, and a
    generator trained for 40 steps scored about 0.9 in testing. Realism is what
    measurements 3 and 4 are for.
-3. **Covers the variety of real brains.** Real and generated slices are encoded
-   with the Task 1 VAEs. In the 32-dimensional latent space, precision and
+3. **Realistic, and covers the variety of real brains.** Real and generated
+   slices are encoded with the Task 1 VAEs. In the 32-dimensional latent space,
+   against a random sample of real training slices, precision and
    recall in the sense of Kynkaanniemi et al. (2019): precision is the fraction
    of generated slices that land inside the region real slices occupy, recall the
    fraction of real slices that land inside the region generated ones occupy.
@@ -31,10 +32,13 @@ saw** (the test split), which is what the generated figure should resemble:
    brains, so confident segmentations of generated ones are evidence they look
    like the real thing to a network that knows the anatomy.
 
-Each figure for generated slices is shown beside the same figure for a random
-sample of **real training slices**, which is what a perfect generator would
-produce: it is trained to imitate the training distribution, so that sample is
-the ceiling it can reach.
+Measurements 2 to 4 compare against a random sample of real training slices,
+and are shown beside the same comparison for a second, disjoint random sample.
+That second sample is what a perfect generator of the training distribution
+would produce, so its scores are the ceiling. The test split is not used there:
+its slices come in consecutive runs from few people, whose near-duplicate
+neighbours make nearest-neighbour radii almost vanish - in testing, even real
+slices scored precision 0 against it.
 
 The VAE and UNet were trained here, on OASIS, not pre-trained elsewhere. The
 usual GAN score, FID, needs an ImageNet-trained Inception network, which is a
@@ -222,22 +226,28 @@ def main() -> None:
     train = load_split(args.data_root, "train", resolution, device, args.workers, args.limit).float() / 255
     test = load_split(args.data_root, "test", resolution, device, args.workers, args.limit).float() / 255
     generated = generate(generator, args.num_generated, device, args.seed)
-    # Comparisons between sets use equal sizes, since nearest-neighbour distances
-    # shrink as a set grows. The test split is the smallest, so it sets the size.
-    size = min(len(test), len(generated))
-    generated_matched = generated[:size]
-    test_matched = test[:size]
-    # The reference for "what a perfect generator would score": real training
-    # slices drawn at random. The generator is trained to imitate the training
-    # distribution, so a random sample of that distribution is exactly what an
-    # ideal generator would produce - except that these slices are not new.
-    # Validation slices would be the wrong reference: they come from other
-    # people, and so differ from the test slices in ways a generator of the
-    # training distribution is not expected to reproduce either.
+    # Two disjoint random samples of real training slices, each the size of the
+    # generated set:
+    #   real       - what the generated slices are compared with
+    #   reference  - compared with `real` in exactly the same way, which is the
+    #                score a perfect generator of the training distribution
+    #                would get, since it would produce fresh samples like these
+    # Random samples rather than the test split, for two reasons found in
+    # testing. The test split's slices come in consecutive runs from few people,
+    # so neighbouring slices are near-duplicates: nearest-neighbour radii shrink
+    # to almost nothing, and even real slices scored precision 0 against them.
+    # And the generator imitates the training distribution, so that is the fair
+    # comparison. Whether it copies that distribution is measured separately, in
+    # section 1, where the test split is the right baseline.
+    size = min(len(generated), len(train) // 2)
     draw = torch.Generator(device="cpu").manual_seed(args.seed + 1)
-    reference = train[torch.randperm(len(train), generator=draw)[:size].to(device)]
+    order = torch.randperm(len(train), generator=draw).to(device)
+    real = train[order[:size]]
+    reference = train[order[size:2 * size]]
+    generated_matched = generated[:size]
     print(f"real: {len(train):,} train, {len(test):,} test | generated: {len(generated):,} | "
-          f"matched set size: {size} (a random {size} training slices serve as the reference)")
+          f"compared at {size} slices each: generated, a random training sample, and a second, "
+          f"disjoint training sample as the reference")
 
     report: dict = {
         "checkpoint": str(checkpoint_path),
@@ -286,19 +296,19 @@ def main() -> None:
 
     # ---- 2. Not collapsed ----------------------------------------------------
     generated_to_generated, _ = nearest(generated_matched, generated_matched, exclude_self=True)
-    reference_to_reference, _ = nearest(reference, reference, exclude_self=True)
+    real_to_real, _ = nearest(real, real, exclude_self=True)
     report["diversity"] = {
         "generated_to_generated": summarise(generated_to_generated),
-        "reference_to_reference": summarise(reference_to_reference),
-        "ratio_of_medians": (generated_to_generated.median() / reference_to_reference.median()).item(),
+        "real_to_real": summarise(real_to_real),
+        "ratio_of_medians": (generated_to_generated.median() / real_to_real.median()).item(),
     }
     arrays["generated_to_generated"] = generated_to_generated.cpu().numpy()
-    arrays["reference_to_reference"] = reference_to_reference.cpu().numpy()
+    arrays["real_to_real"] = real_to_real.cpu().numpy()
 
     diversity = report["diversity"]
     print("\n2. Not collapsed - RMS distance to the nearest other slice in the same set")
     print(f"   generated                 : median {diversity['generated_to_generated']['median']:.4f}")
-    print(f"   random real training slices: median {diversity['reference_to_reference']['median']:.4f}")
+    print(f"   random real training slices: median {diversity['real_to_real']['median']:.4f}")
     print(f"   ratio                     : {diversity['ratio_of_medians']:.2f}   "
           "(near 1 is as varied as real data; collapse drives it towards 0)")
     print("   This detects collapse only. Noise is varied too - an untrained generator scores near 1 -")
@@ -313,29 +323,29 @@ def main() -> None:
         vae = VAE(latent_dim=checkpoint["latent_dim"]).to(device)
         vae.load_state_dict(checkpoint["model_state"])
         vae.eval()
-        latent_test = encode(vae, test_matched)
+        latent_real = encode(vae, real)
         latent_generated = encode(vae, generated_matched)
         latent_reference = encode(vae, reference)
         if key == "vae2":
-            arrays["latent2_test"] = latent_test.cpu().numpy()
+            arrays["latent2_real"] = latent_real.cpu().numpy()
             arrays["latent2_generated"] = latent_generated.cpu().numpy()
-            arrays["latent2_reference"] = latent_reference.cpu().numpy()
+            arrays["latent2_test"] = encode(vae, test).cpu().numpy()
             report["latent2_checkpoint"] = path
             print(f"\n   two-dimensional latents saved for the scatter plot ({path})")
             continue
         report["precision_recall"] = {
             "checkpoint": path,
             "k": PRECISION_RECALL_K,
-            "generated_vs_test": precision_recall(latent_test, latent_generated, PRECISION_RECALL_K),
-            "reference_vs_test": precision_recall(latent_test, latent_reference, PRECISION_RECALL_K),
+            "generated": precision_recall(latent_real, latent_generated, PRECISION_RECALL_K),
+            "reference": precision_recall(latent_real, latent_reference, PRECISION_RECALL_K),
         }
         pr = report["precision_recall"]
-        print(f"\n3. Coverage - precision and recall against test slices, "
+        print(f"\n3. Realism and coverage - precision and recall against real training slices, "
               f"in the {checkpoint['latent_dim']}-dimensional VAE latent space")
-        print(f"   generated slices           : precision {pr['generated_vs_test']['precision']:.3f}   "
-              f"recall {pr['generated_vs_test']['recall']:.3f}")
-        print(f"   random real training slices: precision {pr['reference_vs_test']['precision']:.3f}   "
-              f"recall {pr['reference_vs_test']['recall']:.3f}   (what a perfect generator would score)")
+        print(f"   generated slices               : precision {pr['generated']['precision']:.3f}   "
+              f"recall {pr['generated']['recall']:.3f}")
+        print(f"   a second sample of real slices : precision {pr['reference']['precision']:.3f}   "
+              f"recall {pr['reference']['recall']:.3f}   (what a perfect generator would score)")
 
     # ---- 4. Tissue proportions from the UNet --------------------------------
     if Path(args.unet).exists():
@@ -344,19 +354,19 @@ def main() -> None:
         unet.load_state_dict(checkpoint["model_state"])
         unet.eval()
         statistics = {
-            "test": tissue_statistics(unet, test_matched),
+            "real": tissue_statistics(unet, real),
             "generated": tissue_statistics(unet, generated_matched),
             "reference": tissue_statistics(unet, reference),
         }
         for name, (fractions, confidence) in statistics.items():
             arrays[f"fractions_{name}"] = fractions.cpu().numpy()
             arrays[f"confidence_{name}"] = confidence.cpu().numpy()
-        fractions_test = statistics["test"][0]
+        fractions_real = statistics["real"][0]
         report["tissue"] = {
             "checkpoint": args.unet,
             "mean_fraction": {name: fractions.mean(0).tolist() for name, (fractions, _) in statistics.items()},
-            "wasserstein_to_test": {
-                name: [wasserstein_1d(statistics[name][0][:, c], fractions_test[:, c]) for c in range(NUM_CLASSES)]
+            "wasserstein_to_real": {
+                name: [wasserstein_1d(statistics[name][0][:, c], fractions_real[:, c]) for c in range(NUM_CLASSES)]
                 for name in ("generated", "reference")
             },
             "mean_confidence": {name: confidence.mean().item() for name, (_, confidence) in statistics.items()},
@@ -364,16 +374,16 @@ def main() -> None:
         tissue = report["tissue"]
         print("\n4. Anatomy - share of each class as segmented by the Task 2 UNet")
         print("   class                        " + "".join(f"{c:>9}" for c in range(NUM_CLASSES)))
-        for name, label in (("test", "test slices"), ("reference", "random training slices"),
-                            ("generated", "generated slices")):
+        for name, label in (("real", "real sample"), ("reference", "second real sample"),
+                            ("generated", "generated")):
             print(f"   mean share, {label:<18}" + "".join(f"{v:>9.3f}" for v in tissue["mean_fraction"][name]))
-        for name, label in (("reference", "training vs test"), ("generated", "generated vs test")):
-            print(f"   distance, {label:<20}" + "".join(f"{v:>9.4f}" for v in tissue["wasserstein_to_test"][name]))
-        print("   (earth mover's distance between the per-slice shares; training vs test is the level a")
-        print("    perfect generator would reach)")
+        for name, label in (("reference", "second real vs real"), ("generated", "generated vs real")):
+            print(f"   distance, {label:<20}" + "".join(f"{v:>9.4f}" for v in tissue["wasserstein_to_real"][name]))
+        print("   (earth mover's distance between per-slice shares; the second real sample shows the level")
+        print("    a perfect generator would reach)")
         confidence = tissue["mean_confidence"]
-        print(f"   UNet confidence on brain pixels: test {confidence['test']:.3f}, "
-              f"training {confidence['reference']:.3f}, generated {confidence['generated']:.3f}")
+        print(f"   UNet confidence on brain pixels: real {confidence['real']:.3f}, "
+              f"second real {confidence['reference']:.3f}, generated {confidence['generated']:.3f}")
     else:
         print(f"\n   {args.unet} not found - skipping the tissue comparison")
 
