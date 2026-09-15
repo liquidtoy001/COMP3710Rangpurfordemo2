@@ -2,3 +2,4 @@
 # Linux with a confusing "bad interpreter: /bin/bash^M" error, which is a very
 # easy way to lose an hour on the cluster.
 *.sh text eol=lf
+*.args text eol=lf

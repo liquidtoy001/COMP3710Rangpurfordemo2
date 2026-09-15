@@ -50,8 +50,8 @@ from gan import (
     Generator,
     count_parameters,
     diff_augment,
-    discriminator_hinge_loss,
-    generator_hinge_loss,
+    LOSSES,
+    r1_penalty,
     recalibrate_batchnorm,
 )
 from oasis import DEFAULT_ROOT, OASIS
@@ -61,7 +61,8 @@ DIVERSITY_BATCH = 64
 DIVERSITY_SIZE = 64  # diversity is measured on 64x64 copies, which is cheap and enough
 
 HISTORY_FIELDS = [
-    "step", "d_loss", "g_loss", "d_real", "d_fake", "d_train_clean", "d_validate_clean", "seconds_per_step",
+    "step", "d_loss", "g_loss", "r1", "d_real", "d_fake", "d_train_clean", "d_validate_clean",
+    "seconds_per_step",
 ]
 # The memorisation check scores this many training and validation slices.
 # Large enough that the two means are not dominated by which slices happened
@@ -188,6 +189,11 @@ def main() -> None:
     parser.add_argument("--beta1", type=float, default=0.0)
     parser.add_argument("--beta2", type=float, default=0.9)
     parser.add_argument("--ema-decay", type=float, default=0.999)
+    parser.add_argument("--loss", default="hinge", choices=sorted(LOSSES))
+    parser.add_argument("--r1-gamma", type=float, default=0.0,
+                        help="weight of the R1 gradient penalty on real images; 0 disables it")
+    parser.add_argument("--no-spectral-norm", action="store_true",
+                        help="plain discriminator, normally used together with --r1-gamma")
     parser.add_argument("--diffaugment", default="translation,cutout",
                         help="comma-separated DiffAugment policy; empty string to disable")
     parser.add_argument("--log-every", type=int, default=100)
@@ -223,6 +229,8 @@ def main() -> None:
     print(f"resolution    : {args.resolution}   z dim: {args.z_dim}   width: {args.width}")
     print(f"steps         : {args.steps}   batch size: {args.batch_size}   "
           f"lr G {args.lr_g} / D {args.lr_d}   betas ({args.beta1}, {args.beta2})")
+    print(f"loss          : {args.loss}   R1 gamma: {args.r1_gamma}   "
+          f"spectral norm: {not args.no_spectral_norm}")
     print(f"DiffAugment   : {args.diffaugment or 'off'}   EMA decay: {args.ema_decay}")
     print(f"resuming      : {resuming}")
     print("=" * 78)
@@ -234,7 +242,8 @@ def main() -> None:
           f"at {args.resolution}x{args.resolution} in {time.perf_counter() - load_start:.1f}s")
 
     generator = Generator(args.resolution, args.z_dim, args.width).to(device)
-    discriminator = Discriminator(args.resolution, args.width).to(device)
+    discriminator = Discriminator(args.resolution, args.width, spectral=not args.no_spectral_norm).to(device)
+    discriminator_loss, generator_loss = LOSSES[args.loss]
     print(f"generator     : {count_parameters(generator):,} parameters")
     print(f"discriminator : {count_parameters(discriminator):,} parameters")
 
@@ -255,9 +264,9 @@ def main() -> None:
 
     if resuming:
         checkpoint = torch.load(last_path, map_location=device, weights_only=False)
-        for key in ("resolution", "z_dim", "width"):
-            if checkpoint["args"][key] != getattr(args, key):
-                raise SystemExit(f"{last_path} was trained with {key}={checkpoint['args'][key]}, "
+        for key in ("resolution", "z_dim", "width", "no_spectral_norm"):
+            if checkpoint["args"].get(key, False) != getattr(args, key):
+                raise SystemExit(f"{last_path} was trained with {key}={checkpoint['args'].get(key, False)}, "
                                  f"not {getattr(args, key)}; use another --out-dir or --fresh")
         generator.load_state_dict(checkpoint["generator"])
         discriminator.load_state_dict(checkpoint["discriminator"])
@@ -318,7 +327,7 @@ def main() -> None:
 
     stop = StopRequest()
     session_start = time.perf_counter()
-    window = {"d_loss": 0.0, "g_loss": 0.0, "d_real": 0.0, "d_fake": 0.0, "count": 0}
+    window = {"d_loss": 0.0, "g_loss": 0.0, "r1": 0.0, "d_real": 0.0, "d_fake": 0.0, "count": 0}
     synchronise(device)
     window_start = time.perf_counter()
 
@@ -334,16 +343,20 @@ def main() -> None:
         real = to_model_range(train_images[index])
         with torch.no_grad():
             fake = generator(torch.randn(args.batch_size, args.z_dim, device=device))
+        if args.r1_gamma > 0:
+            real.requires_grad_(True)
         real_scores = discriminator(diff_augment(real, args.diffaugment))
         fake_scores = discriminator(diff_augment(fake, args.diffaugment))
-        d_loss = discriminator_hinge_loss(real_scores, fake_scores)
+        d_loss = discriminator_loss(real_scores, fake_scores)
+        r1 = r1_penalty(real_scores, real) if args.r1_gamma > 0 else torch.zeros((), device=device)
+        d_loss = d_loss + 0.5 * args.r1_gamma * r1
         optimiser_d.zero_grad(set_to_none=True)
         d_loss.backward()
         optimiser_d.step()
 
         # ---- generator update: make the discriminator score its images as real ----
         fake = generator(torch.randn(args.batch_size, args.z_dim, device=device))
-        g_loss = generator_hinge_loss(discriminator(diff_augment(fake, args.diffaugment)))
+        g_loss = generator_loss(discriminator(diff_augment(fake, args.diffaugment)))
         optimiser_g.zero_grad(set_to_none=True)
         g_loss.backward()
         optimiser_g.step()
@@ -355,6 +368,7 @@ def main() -> None:
         window["g_loss"] += g_loss.detach()
         window["d_real"] += real_scores.detach().mean()
         window["d_fake"] += fake_scores.detach().mean()
+        window["r1"] += r1.detach()
         window["count"] += 1
 
         if step % args.log_every == 0 or step == args.steps:
@@ -380,6 +394,7 @@ def main() -> None:
                 "g_loss": (window["g_loss"] / count).item(),
                 "d_real": (window["d_real"] / count).item(),
                 "d_fake": (window["d_fake"] / count).item(),
+                "r1": (window["r1"] / count).item(),
                 "d_train_clean": d_train_clean,
                 "d_validate_clean": d_validate_clean,
                 "seconds_per_step": elapsed / count,
@@ -397,7 +412,7 @@ def main() -> None:
                 # destroy the only thing worth resuming from.
                 raise SystemExit("non-finite loss or score: training has diverged; "
                                  f"last.pt is from step {step - step % args.checkpoint_every:,} or earlier")
-            window = {"d_loss": 0.0, "g_loss": 0.0, "d_real": 0.0, "d_fake": 0.0, "count": 0}
+            window = {"d_loss": 0.0, "g_loss": 0.0, "r1": 0.0, "d_real": 0.0, "d_fake": 0.0, "count": 0}
 
         if step % args.sample_every == 0 or step == args.steps:
             sample_and_measure()

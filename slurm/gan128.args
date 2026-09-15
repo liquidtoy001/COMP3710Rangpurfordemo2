@@ -1,0 +1,17 @@
+# Configuration for slurm/train_gan.sh 128, read when the job starts.
+#
+# The first configuration (hinge loss, spectral normalisation, translation and
+# cutout DiffAugment) collapsed on OASIS in the smoke test, job 590977: by step
+# 1,000 all 64 progress samples were one brain, after the discriminator's scores
+# for real and generated slices both sank to zero at step 300 and stayed there.
+#
+# Provisional, until slurm/sweep_gan.sh has compared the alternatives: the
+# non-saturating logistic loss with an R1 penalty on real images and no spectral
+# normalisation (Mescheder et al., 2018), translation only.
+--loss logistic
+--r1-gamma 10
+--no-spectral-norm
+--diffaugment translation
+--lr-g 2e-4
+--lr-d 2e-4
+--beta2 0.99

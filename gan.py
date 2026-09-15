@@ -118,15 +118,19 @@ class Generator(nn.Module):
         return torch.tanh(self.to_image(x))
 
 
+def maybe_spectral_norm(layer: nn.Module, enabled: bool) -> nn.Module:
+    return spectral_norm(layer) if enabled else layer
+
+
 class DownBlock(nn.Module):
     """Halve the resolution: a 3x3 convolution, then a stride-2 4x4 convolution."""
 
-    def __init__(self, in_channels: int, out_channels: int):
+    def __init__(self, in_channels: int, out_channels: int, spectral: bool = True):
         super().__init__()
         self.body = nn.Sequential(
-            spectral_norm(nn.Conv2d(in_channels, in_channels, 3, padding=1)),
+            maybe_spectral_norm(nn.Conv2d(in_channels, in_channels, 3, padding=1), spectral),
             nn.LeakyReLU(0.2, inplace=True),
-            spectral_norm(nn.Conv2d(in_channels, out_channels, 4, stride=2, padding=1)),
+            maybe_spectral_norm(nn.Conv2d(in_channels, out_channels, 4, stride=2, padding=1), spectral),
             nn.LeakyReLU(0.2, inplace=True),
         )
 
@@ -137,7 +141,7 @@ class DownBlock(nn.Module):
 class Discriminator(nn.Module):
     """Image -> one unbounded realness score per image (hinge loss wants no sigmoid)."""
 
-    def __init__(self, resolution: int = 128, width: int = 32):
+    def __init__(self, resolution: int = 128, width: int = 32, spectral: bool = True):
         super().__init__()
         stages = check_resolution(resolution)
         self.resolution = resolution
@@ -145,23 +149,23 @@ class Discriminator(nn.Module):
         # LeakyReLU rather than ReLU, so a unit that is off still passes some
         # gradient back to the generator.
         self.from_image = nn.Sequential(
-            spectral_norm(nn.Conv2d(1, channels_at(resolution, resolution, width), 3, padding=1)),
+            maybe_spectral_norm(nn.Conv2d(1, channels_at(resolution, resolution, width), 3, padding=1), spectral),
             nn.LeakyReLU(0.2, inplace=True),
         )
         blocks = []
         size = resolution
         for _ in range(stages):
             blocks.append(DownBlock(channels_at(size, resolution, width),
-                                    channels_at(size // 2, resolution, width)))
+                                    channels_at(size // 2, resolution, width), spectral))
             size //= 2
         self.blocks = nn.Sequential(*blocks)
 
         end = channels_at(4, resolution, width)
         self.head = nn.Sequential(
-            spectral_norm(nn.Conv2d(end, end, 3, padding=1)),
+            maybe_spectral_norm(nn.Conv2d(end, end, 3, padding=1), spectral),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Flatten(),
-            spectral_norm(nn.Linear(end * 4 * 4, 1)),
+            maybe_spectral_norm(nn.Linear(end * 4 * 4, 1), spectral),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -176,6 +180,40 @@ def discriminator_hinge_loss(real_scores: torch.Tensor, fake_scores: torch.Tenso
 def generator_hinge_loss(fake_scores: torch.Tensor) -> torch.Tensor:
     """Raise the discriminator's score of generated images."""
     return -fake_scores.mean()
+
+
+def discriminator_logistic_loss(real_scores: torch.Tensor, fake_scores: torch.Tensor) -> torch.Tensor:
+    """The original GAN loss, written with softplus: -log sigmoid(real) - log(1 - sigmoid(fake))."""
+    return F.softplus(-real_scores).mean() + F.softplus(fake_scores).mean()
+
+
+def generator_nonsaturating_loss(fake_scores: torch.Tensor) -> torch.Tensor:
+    """-log sigmoid(fake): strong gradient exactly when the discriminator rejects the image.
+
+    The minimax form, log(1 - sigmoid(fake)), has almost no gradient while the
+    generator is poor, which is when it most needs one (Goodfellow et al., 2014).
+    """
+    return F.softplus(-fake_scores).mean()
+
+
+LOSSES = {
+    "hinge": (discriminator_hinge_loss, generator_hinge_loss),
+    "logistic": (discriminator_logistic_loss, generator_nonsaturating_loss),
+}
+
+
+def r1_penalty(real_scores: torch.Tensor, real_images: torch.Tensor) -> torch.Tensor:
+    """R1: the squared gradient of the discriminator's score on real images (Mescheder et al., 2018).
+
+    Penalising it keeps the discriminator flat around the real data, so it cannot
+    build a cliff that throws the generator's gradients around, and the pair
+    provably converges near equilibrium where unregularised GANs can orbit it.
+    It constrains the discriminator only where the data is, which is less
+    restrictive than spectral normalisation's bound everywhere.
+    ``real_images`` must have had ``requires_grad`` set before scoring.
+    """
+    gradient, = torch.autograd.grad(real_scores.sum(), real_images, create_graph=True)
+    return gradient.pow(2).flatten(1).sum(1).mean()
 
 
 class EMA:
