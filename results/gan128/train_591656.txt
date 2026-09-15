@@ -1,0 +1,168 @@
+job 591656 on a100-4, started Wed Sep 16 01:29:08 AEST 2026
+repository at 02561e3
+configuration from slurm/gan128.args: --loss logistic --r1-gamma 10 --no-spectral-norm --diffaugment= --lr-g 2e-4 --lr-d 2e-4 --beta2 0.99 
+command-line arguments: 
+Wed Sep 16 01:29:08 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 590.48.01              Driver Version: 590.48.01      CUDA Version: 13.1     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-PCIE-40GB          Off |   00000000:0B:00.0 Off |                    0 |
+| N/A   32C    P0             64W /  250W |       0MiB /  40960MiB |     25%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+==============================================================================
+job id        : 591656
+host          : a100-4
+device        : cuda (NVIDIA A100-PCIE-40GB)
+torch         : 2.13.0+cu130
+resolution    : 128   z dim: 128   width: 32
+steps         : 40000   batch size: 64   lr G 0.0002 / D 0.0002   betas (0.0, 0.99)
+loss          : logistic   R1 gamma: 10.0   spectral norm: False
+DiffAugment   : off   EMA decay: 0.999
+resuming      : False
+==============================================================================
+loaded 9,664 training and 1,120 validation slices at 128x128 in 8.8s
+generator     : 8,122,529 parameters
+discriminator : 12,493,025 parameters
+          diversity at step 0: generated 12.45 vs real 7.19 (ratio 1.73)
+step     100/40,000  D 1.479  G +0.738  scores real +0.29 fake +0.12 | unaugmented train +0.43 validate +0.42  224 ms/step
+step     200/40,000  D 1.383  G +0.707  scores real -0.00 fake -0.02 | unaugmented train +0.05 validate +0.05  136 ms/step
+step     300/40,000  D 1.485  G +0.858  scores real -0.09 fake -0.06 | unaugmented train +0.07 validate +0.07  137 ms/step
+step     400/40,000  D 1.383  G +0.708  scores real +0.01 fake -0.01 | unaugmented train +0.19 validate +0.19  137 ms/step
+step     500/40,000  D 1.385  G +0.701  scores real +0.00 fake -0.00 | unaugmented train +0.01 validate +0.01  138 ms/step
+step     600/40,000  D 1.384  G +0.712  scores real +0.01 fake -0.00 | unaugmented train -0.02 validate -0.02  138 ms/step
+step     700/40,000  D 1.390  G +0.844  scores real +0.29 fake -0.04 | unaugmented train +1.01 validate +1.01  138 ms/step
+step     800/40,000  D 1.289  G +0.876  scores real +0.33 fake -0.15 | unaugmented train +0.18 validate +0.19  138 ms/step
+step     900/40,000  D 1.376  G +0.759  scores real +0.02 fake -0.04 | unaugmented train +0.04 validate +0.04  139 ms/step
+step   1,000/40,000  D 1.376  G +0.740  scores real +0.02 fake -0.02 | unaugmented train +0.10 validate +0.10  139 ms/step
+          diversity at step 1,000: generated 4.05 vs real 7.41 (ratio 0.55)
+step   1,100/40,000  D 1.378  G +0.731  scores real +0.02 fake -0.02 | unaugmented train +0.08 validate +0.08  139 ms/step
+step   1,200/40,000  D 1.381  G +0.720  scores real +0.01 fake -0.01 | unaugmented train -0.01 validate -0.01  139 ms/step
+step   1,300/40,000  D 1.382  G +0.724  scores real +0.01 fake -0.01 | unaugmented train +0.08 validate +0.08  139 ms/step
+step   1,400/40,000  D 1.381  G +0.724  scores real +0.01 fake -0.01 | unaugmented train +0.08 validate +0.08  139 ms/step
+step   1,500/40,000  D 1.381  G +0.724  scores real +0.01 fake -0.01 | unaugmented train +0.10 validate +0.10  139 ms/step
+step   1,600/40,000  D 1.382  G +0.726  scores real +0.02 fake -0.01 | unaugmented train +0.11 validate +0.11  139 ms/step
+step   1,700/40,000  D 1.380  G +0.727  scores real +0.02 fake -0.01 | unaugmented train +0.01 validate +0.01  139 ms/step
+step   1,800/40,000  D 1.381  G +0.723  scores real +0.01 fake -0.01 | unaugmented train -0.01 validate -0.01  139 ms/step
+step   1,900/40,000  D 1.383  G +0.719  scores real +0.01 fake -0.01 | unaugmented train -0.01 validate -0.01  139 ms/step
+step   2,000/40,000  D 1.382  G +0.721  scores real +0.01 fake -0.01 | unaugmented train +0.04 validate +0.04  139 ms/step
+          diversity at step 2,000: generated 5.59 vs real 7.37 (ratio 0.76)
+step   2,100/40,000  D 1.382  G +0.716  scores real +0.01 fake -0.01 | unaugmented train +0.01 validate +0.01  139 ms/step
+step   2,200/40,000  D 1.382  G +0.715  scores real +0.01 fake -0.01 | unaugmented train +0.09 validate +0.09  138 ms/step
+step   2,300/40,000  D 1.382  G +0.716  scores real +0.01 fake -0.01 | unaugmented train -0.02 validate -0.02  139 ms/step
+step   2,400/40,000  D 1.382  G +0.716  scores real +0.01 fake -0.01 | unaugmented train -0.05 validate -0.05  139 ms/step
+step   2,500/40,000  D 1.382  G +0.716  scores real +0.01 fake -0.01 | unaugmented train +0.05 validate +0.04  139 ms/step
+step   2,600/40,000  D 1.382  G +0.715  scores real +0.01 fake -0.01 | unaugmented train -0.02 validate -0.03  139 ms/step
+step   2,700/40,000  D 1.382  G +0.713  scores real +0.01 fake -0.01 | unaugmented train -0.06 validate -0.07  139 ms/step
+step   2,800/40,000  D 1.382  G +0.713  scores real +0.01 fake -0.01 | unaugmented train +0.03 validate +0.03  139 ms/step
+step   2,900/40,000  D 1.383  G +0.712  scores real +0.01 fake -0.01 | unaugmented train -0.06 validate -0.06  139 ms/step
+step   3,000/40,000  D 1.382  G +0.713  scores real +0.01 fake -0.01 | unaugmented train -0.02 validate -0.02  139 ms/step
+          diversity at step 3,000: generated 6.16 vs real 7.75 (ratio 0.79)
+step   3,100/40,000  D 1.382  G +0.712  scores real +0.01 fake -0.01 | unaugmented train +0.02 validate +0.02  139 ms/step
+step   3,200/40,000  D 1.382  G +0.711  scores real +0.01 fake -0.01 | unaugmented train +0.01 validate +0.00  139 ms/step
+step   3,300/40,000  D 1.382  G +0.712  scores real +0.01 fake -0.01 | unaugmented train -0.00 validate -0.00  139 ms/step
+step   3,400/40,000  D 1.382  G +0.711  scores real +0.01 fake -0.01 | unaugmented train +0.03 validate +0.02  139 ms/step
+step   3,500/40,000  D 1.382  G +0.710  scores real +0.01 fake -0.01 | unaugmented train +0.04 validate +0.04  139 ms/step
+step   3,600/40,000  D 1.382  G +0.711  scores real +0.01 fake -0.01 | unaugmented train +0.00 validate -0.00  139 ms/step
+step   3,700/40,000  D 1.382  G +0.711  scores real +0.01 fake -0.01 | unaugmented train -0.03 validate -0.03  139 ms/step
+step   3,800/40,000  D 1.382  G +0.710  scores real +0.01 fake -0.01 | unaugmented train +0.02 validate +0.01  139 ms/step
+step   3,900/40,000  D 1.383  G +0.710  scores real +0.01 fake -0.01 | unaugmented train +0.04 validate +0.04  139 ms/step
+step   4,000/40,000  D 1.383  G +0.709  scores real +0.01 fake -0.01 | unaugmented train +0.06 validate +0.06  139 ms/step
+          diversity at step 4,000: generated 6.61 vs real 7.47 (ratio 0.89)
+step   4,100/40,000  D 1.383  G +0.708  scores real +0.01 fake -0.01 | unaugmented train -0.02 validate -0.02  139 ms/step
+step   4,200/40,000  D 1.383  G +0.707  scores real +0.01 fake -0.01 | unaugmented train -0.00 validate -0.00  138 ms/step
+step   4,300/40,000  D 1.383  G +0.707  scores real +0.01 fake -0.01 | unaugmented train -0.01 validate -0.02  138 ms/step
+step   4,400/40,000  D 1.383  G +0.707  scores real +0.01 fake -0.01 | unaugmented train +0.04 validate +0.03  139 ms/step
+step   4,500/40,000  D 1.383  G +0.708  scores real +0.01 fake -0.01 | unaugmented train -0.02 validate -0.02  139 ms/step
+step   4,600/40,000  D 1.383  G +0.708  scores real +0.01 fake -0.01 | unaugmented train +0.00 validate +0.00  139 ms/step
+step   4,700/40,000  D 1.383  G +0.707  scores real +0.01 fake -0.01 | unaugmented train -0.07 validate -0.07  139 ms/step
+step   4,800/40,000  D 1.383  G +0.707  scores real +0.01 fake -0.01 | unaugmented train +0.00 validate -0.00  139 ms/step
+step   4,900/40,000  D 1.383  G +0.707  scores real +0.01 fake -0.01 | unaugmented train -0.01 validate -0.02  139 ms/step
+step   5,000/40,000  D 1.383  G +0.708  scores real +0.01 fake -0.01 | unaugmented train -0.02 validate -0.02  139 ms/step
+          diversity at step 5,000: generated 6.62 vs real 7.29 (ratio 0.91)
+step   5,100/40,000  D 1.383  G +0.708  scores real +0.01 fake -0.01 | unaugmented train -0.03 validate -0.03  139 ms/step
+step   5,200/40,000  D 1.382  G +0.708  scores real +0.01 fake -0.01 | unaugmented train -0.03 validate -0.04  139 ms/step
+step   5,300/40,000  D 1.382  G +0.708  scores real +0.01 fake -0.01 | unaugmented train +0.06 validate +0.05  139 ms/step
+step   5,400/40,000  D 1.383  G +0.707  scores real +0.01 fake -0.01 | unaugmented train -0.02 validate -0.03  139 ms/step
+step   5,500/40,000  D 1.383  G +0.707  scores real +0.01 fake -0.01 | unaugmented train +0.01 validate -0.00  139 ms/step
+step   5,600/40,000  D 1.383  G +0.708  scores real +0.01 fake -0.01 | unaugmented train +0.05 validate +0.04  139 ms/step
+step   5,700/40,000  D 1.384  G +0.702  scores real +0.01 fake -0.00 | unaugmented train +0.02 validate +0.02  139 ms/step
+step   5,800/40,000  D 1.383  G +0.709  scores real +0.01 fake -0.01 | unaugmented train +0.01 validate +0.01  139 ms/step
+step   5,900/40,000  D 1.383  G +0.708  scores real +0.01 fake -0.01 | unaugmented train +0.07 validate +0.07  139 ms/step
+step   6,000/40,000  D 1.383  G +0.708  scores real +0.01 fake -0.01 | unaugmented train +0.05 validate +0.05  139 ms/step
+          diversity at step 6,000: generated 6.84 vs real 7.51 (ratio 0.91)
+step   6,100/40,000  D 1.383  G +0.707  scores real +0.01 fake -0.01 | unaugmented train -0.10 validate -0.10  139 ms/step
+step   6,200/40,000  D 1.384  G +0.705  scores real +0.01 fake -0.01 | unaugmented train +0.01 validate +0.00  138 ms/step
+step   6,300/40,000  D 1.383  G +0.707  scores real +0.01 fake -0.01 | unaugmented train +0.04 validate +0.03  139 ms/step
+step   6,400/40,000  D 1.383  G +0.708  scores real +0.01 fake -0.01 | unaugmented train +0.03 validate +0.02  139 ms/step
+step   6,500/40,000  D 1.382  G +0.708  scores real +0.01 fake -0.01 | unaugmented train +0.02 validate +0.00  139 ms/step
+step   6,600/40,000  D 1.382  G +0.708  scores real +0.01 fake -0.01 | unaugmented train +0.04 validate +0.03  139 ms/step
+step   6,700/40,000  D 1.382  G +0.708  scores real +0.01 fake -0.01 | unaugmented train +0.00 validate -0.01  139 ms/step
+step   6,800/40,000  D 1.382  G +0.709  scores real +0.01 fake -0.01 | unaugmented train +0.01 validate +0.00  139 ms/step
+step   6,900/40,000  D 1.382  G +0.709  scores real +0.01 fake -0.01 | unaugmented train -0.00 validate -0.01  139 ms/step
+step   7,000/40,000  D 1.382  G +0.708  scores real +0.01 fake -0.01 | unaugmented train -0.04 validate -0.05  139 ms/step
+          diversity at step 7,000: generated 7.27 vs real 7.40 (ratio 0.98)
+step   7,100/40,000  D 1.382  G +0.709  scores real +0.01 fake -0.01 | unaugmented train -0.05 validate -0.06  139 ms/step
+step   7,200/40,000  D 1.382  G +0.709  scores real +0.01 fake -0.01 | unaugmented train +0.05 validate +0.05  139 ms/step
+step   7,300/40,000  D 2.148  G +0.707  scores real +0.72 fake +0.72 | unaugmented train -0.03 validate -0.03  139 ms/step
+step   7,400/40,000  D 1.387  G +0.702  scores real -0.02 fake -0.02 | unaugmented train -0.01 validate -0.01  139 ms/step
+step   7,500/40,000  D 1.387  G +0.694  scores real -0.00 fake -0.00 | unaugmented train +0.00 validate +0.00  139 ms/step
+step   7,600/40,000  D 1.386  G +0.694  scores real -0.00 fake -0.00 | unaugmented train -0.01 validate -0.01  139 ms/step
+step   7,700/40,000  D 1.386  G +0.694  scores real -0.00 fake -0.00 | unaugmented train +0.00 validate +0.00  139 ms/step
+step   7,800/40,000  D 1.386  G +0.693  scores real -0.00 fake -0.00 | unaugmented train +0.00 validate +0.00  139 ms/step
+step   7,900/40,000  D 1.386  G +0.693  scores real -0.00 fake -0.00 | unaugmented train +0.01 validate +0.01  139 ms/step
+step   8,000/40,000  D 1.386  G +0.693  scores real -0.00 fake -0.00 | unaugmented train +0.00 validate +0.00  139 ms/step
+          diversity at step 8,000: generated 6.87 vs real 7.44 (ratio 0.92)
+step   8,100/40,000  D 4.785  G +2.505  scores real -0.93 fake -0.56 | unaugmented train -0.15 validate -0.15  139 ms/step
+step   8,200/40,000  D 1.369  G +0.740  scores real -0.05 fake -0.09 | unaugmented train +0.07 validate +0.07  138 ms/step
+step   8,300/40,000  D 1.384  G +0.704  scores real -0.00 fake -0.01 | unaugmented train -0.05 validate -0.05  138 ms/step
+step   8,400/40,000  D 1.386  G +0.696  scores real -0.00 fake -0.00 | unaugmented train +0.02 validate +0.02  139 ms/step
+step   8,500/40,000  D 1.387  G +0.694  scores real +0.00 fake +0.00 | unaugmented train -0.04 validate -0.05  139 ms/step
+step   8,600/40,000  D 1.386  G +0.694  scores real -0.00 fake -0.00 | unaugmented train +0.01 validate +0.01  139 ms/step
+step   8,700/40,000  D 2.724  G +1.120  scores real +0.61 fake +0.45 | unaugmented train +0.03 validate +0.03  139 ms/step
+step   8,800/40,000  D 1.383  G +0.685  scores real +0.03 fake +0.02 | unaugmented train -0.02 validate -0.02  139 ms/step
+step   8,900/40,000  D 1.385  G +0.697  scores real -0.00 fake -0.01 | unaugmented train -0.00 validate -0.00  139 ms/step
+step   9,000/40,000  D 1.386  G +0.694  scores real -0.00 fake -0.00 | unaugmented train -0.01 validate -0.01  139 ms/step
+          diversity at step 9,000: generated 4.53 vs real 7.21 (ratio 0.63)
+step   9,100/40,000  D 1.386  G +0.695  scores real -0.00 fake -0.00 | unaugmented train -0.01 validate -0.01  139 ms/step
+step   9,200/40,000  D 1.386  G +0.694  scores real -0.00 fake -0.00 | unaugmented train -0.02 validate -0.02  139 ms/step
+step   9,300/40,000  D 1.386  G +0.694  scores real -0.00 fake -0.00 | unaugmented train -0.01 validate -0.01  139 ms/step
+step   9,400/40,000  D 1.386  G +0.693  scores real -0.00 fake -0.00 | unaugmented train +0.02 validate +0.02  139 ms/step
+step   9,500/40,000  D 1.386  G +0.693  scores real -0.00 fake -0.00 | unaugmented train +0.01 validate +0.01  139 ms/step
+step   9,600/40,000  D 1.386  G +0.693  scores real -0.00 fake -0.00 | unaugmented train +0.00 validate +0.00  139 ms/step
+step   9,700/40,000  D 1.386  G +0.693  scores real -0.00 fake -0.00 | unaugmented train +0.01 validate +0.01  139 ms/step
+step   9,800/40,000  D 24.202  G +1.134  scores real +14.37 fake +13.96 | unaugmented train -0.02 validate -0.02  139 ms/step
+step   9,900/40,000  D 1.372  G +0.712  scores real -0.00 fake -0.03 | unaugmented train -0.01 validate -0.01  139 ms/step
+step  10,000/40,000  D 1.382  G +0.692  scores real +0.01 fake +0.00 | unaugmented train +0.04 validate +0.04  139 ms/step
+          diversity at step 10,000: generated 1.95 vs real 7.79 (ratio 0.25)
+step  10,100/40,000  D 1.382  G +0.698  scores real +0.02 fake -0.00 | unaugmented train -0.11 validate -0.11  139 ms/step
+step  10,200/40,000  D 1.389  G +0.692  scores real -0.00 fake +0.00 | unaugmented train +0.02 validate +0.02  138 ms/step
+step  10,300/40,000  D 1.389  G +0.693  scores real -0.00 fake +0.00 | unaugmented train +0.04 validate +0.04  139 ms/step
+step  10,400/40,000  D 1.388  G +0.694  scores real -0.00 fake +0.00 | unaugmented train -0.06 validate -0.06  139 ms/step
+step  10,500/40,000  D 1.389  G +0.694  scores real +0.00 fake +0.00 | unaugmented train +0.00 validate +0.00  139 ms/step
+step  10,600/40,000  D 1.386  G +0.693  scores real +0.00 fake -0.00 | unaugmented train -0.01 validate -0.01  139 ms/step
+step  10,700/40,000  D 1.386  G +0.694  scores real -0.00 fake -0.00 | unaugmented train +0.04 validate +0.04  139 ms/step
+step  10,800/40,000  D 1.748  G +0.882  scores real -0.05 fake +0.00 | unaugmented train +0.01 validate +0.01  139 ms/step
+step  10,900/40,000  D 1.387  G +0.693  scores real +0.00 fake +0.00 | unaugmented train -0.02 validate -0.02  139 ms/step
+step  11,000/40,000  D 1.387  G +0.693  scores real +0.00 fake +0.00 | unaugmented train +0.00 validate +0.00  139 ms/step
+          diversity at step 11,000: generated 1.14 vs real 7.27 (ratio 0.16)
+          COLLAPSE: diversity below 0.6 at 2 samples in a row
+------------------------------------------------------------------------------
+finished 11,000 steps in 25.6 min of training
+final.pt           : the last healthy snapshot, step 8,000 (collapse declared at step 11,000)
+progress grids     : runs/gan128/progress
+
+Next:  sbatch slurm/evaluate_gan.sh runs/gan128
+finished Wed Sep 16 01:56:06 AEST 2026

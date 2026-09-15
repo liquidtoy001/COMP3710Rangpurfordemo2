@@ -1,0 +1,63 @@
+job 591794 on a100-b, started Wed Sep 16 02:50:41 AEST 2026
+Wed Sep 16 02:50:41 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 590.48.01              Driver Version: 590.48.01      CUDA Version: 13.1     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-PCIE-40GB          Off |   00000000:0B:00.0 Off |                    0 |
+| N/A   29C    P0             31W /  250W |       0MiB /  40960MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+==============================================================================
+COMP3710 demonstration 2 - Task 3, GAN evaluation
+job id    : 591794
+device    : cuda (NVIDIA A100-PCIE-40GB)
+generator : runs/gan128/final.pt (final.pt), step 8,000, 128x128
+==============================================================================
+real: 9,664 train, 544 test | generated: 1,000 | compared at 1000 slices each: generated, a random training sample, and a second, disjoint training sample as the reference
+
+1. Not copies - RMS distance to the nearest training slice
+   generated slices : median 0.0801   closest 0.0639
+   real test slices : median 0.0804   closest 0.0622   (new people, never trained on)
+   generated slices nearer the training set than 95% of test slices: 4.2%   (5% of test slices, by definition)
+   A generator of the training distribution can sit a little nearer it than new people do;
+   copies show as distances near zero. nearest_neighbours.png shows the closest pairs.
+
+2. Not collapsed - RMS distance to the nearest other slice in the same set
+   generated                 : median 0.0379
+   random real training slices: median 0.0611
+   ratio                     : 0.62   (near 1 is as varied as real data; collapse drives it towards 0)
+   This detects collapse only. Noise is varied too - an untrained generator scores near 1 -
+   so realism is judged by precision (3) and anatomy (4), not by this ratio.
+
+3. Realism and coverage - precision and recall against real training slices, in the 32-dimensional VAE latent space
+   generated slices               : precision 0.803   recall 0.009
+   a second sample of real slices : precision 0.955   recall 0.949   (what a perfect generator would score)
+
+   two-dimensional latents saved for the scatter plot (runs/vae_l2_beta50/best.pt)
+
+4. Anatomy - share of each class as segmented by the Task 2 UNet
+   class                                0        1        2        3
+   mean share, real sample           0.723    0.054    0.116    0.107
+   mean share, second real sample    0.722    0.054    0.117    0.107
+   mean share, generated             0.722    0.047    0.123    0.109
+   distance, second real vs real    0.0005   0.0006   0.0008   0.0006
+   distance, generated vs real      0.0010   0.0074   0.0068   0.0019
+   (earth mover's distance between per-slice shares; the second real sample shows the level
+    a perfect generator would reach)
+   UNet confidence on brain pixels: real 0.987, second real 0.987, generated 0.987
+
+wrote runs/gan128/evaluation/evaluation.json and runs/gan128/evaluation/arrays.npz
+Copy runs/gan128 back (without the .pt files) and run:  python plot_gan.py runs/gan128
+finished Wed Sep 16 02:51:06 AEST 2026
