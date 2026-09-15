@@ -10,7 +10,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | --- | --- | ---: | --- |
 | 3.2a | ResNet-18 on CIFAR-10, >90% test accuracy | 1 | **93.87% in 3.8 min - MET** |
 | 3.2b | Inference + one training epoch live during the demo | 1 | rehearsed on Rangpur 14 Sep: 93.87% reproduced, epoch 9.0 s |
-| 3.2c | Mixed precision, 94% at V100-360s or better | 2 | AMP 93.86%, 9.1% faster - not yet met; flip test-time augmentation written, not yet run |
+| 3.2c | Mixed precision, 94% at V100-360s or better | 2 | **94.31%** with test-time flip averaging (93.86% without), 209.7 s on an A100 - met, subject to the demonstrator accepting both |
 | 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | trained, beta swept, manifold rendered |
 | 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET**; live inference rehearsed 14 Sep, Dice reproduced |
 | 4.4 Task 3 | OASIS GAN | (7/7 tier) | not attempting yet |
@@ -25,7 +25,7 @@ down explain how each was produced and what it shows.
 
 **93.87% test accuracy** after 30 epochs in 230.7 s on one A100, against a target
 of 90% within thirty minutes. With mixed precision the same run reached 93.86% in
-209.7 s.
+209.7 s, and **94.31%** when each test image is also classified mirrored.
 
 ![Training curves for the ResNet-18 baseline: accuracy, loss, learning rate and time per epoch](results/baseline/curves.png)
 
@@ -447,6 +447,7 @@ All measured on an A100-PCIE-40GB, 9 September 2026.
 | --- | --- | --- |
 | 3.2a baseline | **93.87%** test accuracy - target met | 230.7 s |
 | 3.2c mixed precision | 93.86% - unchanged within noise | 209.7 s (**9.1% faster**) |
+| 3.2c, same weights, test-time flip | **94.31%** - 94% target met | no retraining |
 | Task 1 VAE, latent 32 | best validation loss 16382 at epoch 14 | 181.7 s |
 | Task 1 VAE, latent 2 | best validation loss 16885 at epoch 23 | 179.7 s |
 | Task 2 UNet | **worst class DSC 0.9646** - every label above 0.9 | 17.7 min |
@@ -462,22 +463,37 @@ for a larger batch size as the next 3.2c experiment, and it is why the DAWNBench
 reference solutions raise batch size and use channels-last together with AMP
 rather than relying on AMP alone.
 
-**3.2c is 14 images short, and the next step changes no training.** The AMP
-run's 93.86% is 14 of 10,000 test images below 94%. `tta_eval.py` scores the
-same weights with test-time augmentation: each image is also classified mirrored
-left to right, and the two softmax outputs are averaged. The training time on
-record is unchanged because nothing is retrained.
+**3.2c: 94.31% with test-time flip averaging, from the same mixed-precision
+weights.** The AMP run's 93.86% was 14 of 10,000 test images below 94%.
+`tta_eval.py` scores those weights with each image also classified mirrored left
+to right, averaging the two softmax outputs. Nothing is retrained, so the
+training time on record is unchanged. Job 590470, 15 September 2026; the output
+is committed as `results/amp/tta.json` and `results/amp/tta_590470.txt` (the job's output, renamed
+because `*.out` is ignored).
+
+| | Test accuracy |
+| --- | --- |
+| AMP model, plain (reproduces the recorded figure) | 93.86% |
+| AMP model, averaged with its horizontal flip | **94.31%** |
 
 Every choice was fixed in the script before it was first run, because the test
 set is to be scored once, not searched: the final-epoch AMP checkpoint (epoch 30,
 so not one picked for its test score), a horizontal flip and nothing else,
-softmax averaging, and full-precision evaluation, so the plain score must
-reproduce 93.86% exactly. It also reports how many test images the flip corrected
-and how many it broke, since one accuracy figure on 10,000 images has a standard
-error of about 0.24 points. Two things are not settled by any script: whether
-the demonstrator accepts flip averaging as part of the model, and how an A100's
-209.7 s (167.3 s of it training, the rest per-epoch evaluation) compares with
-the lab sheet's 360 s on a V100.
+softmax averaging, and full-precision evaluation. The plain score reproduced
+93.86% exactly, so the change comes from the flip alone.
+
+The gain is real rather than noise. One accuracy figure on 10,000 images has a
+standard error of 0.23 points, but the right test compares the two scorings on
+the same images: the flip corrected 112 predictions and broke 67. If it did
+nothing, those 179 changes would split evenly; a split this lopsided has a
+two-sided exact McNemar p of 0.001. The largest gains are for airplane (+1.2
+points) and bird (+1.1), whose photographs face either way; ship is the only
+class that lost (-0.4).
+
+Two things no script settles, and both are for the demonstrator to judge: whether
+flip averaging counts as part of the model, as it does in the fast DAWNBench
+CIFAR-10 entries, and how an A100's 209.7 s (167.3 s of it training, the rest
+per-epoch evaluation) compares with the lab sheet's 360 s on a V100.
 
 ```bash
 sbatch slurm/tta.sh

@@ -1,0 +1,19 @@
+{
+  "checkpoint": "runs/amp/best.pt",
+  "checkpoint_epoch": 30,
+  "trained_with_amp": true,
+  "recorded_test_accuracy": 0.9386,
+  "plain_test_accuracy": 0.9386000037193298,
+  "flip_tta_test_accuracy": 0.9430999755859375,
+  "target": 0.94,
+  "target_met": true,
+  "images": 10000,
+  "fixed_by_flip": 112,
+  "broken_by_flip": 67,
+  "standard_error": 0.002316514874455625,
+  "plain_inference_seconds": 1.7383571728132665,
+  "flip_inference_seconds": 0.4741876842454076,
+  "device": "cuda (NVIDIA A100-PCIE-40GB)",
+  "job_id": "590470",
+  "method": "average of softmax over identity and horizontal flip, full precision"
+}
