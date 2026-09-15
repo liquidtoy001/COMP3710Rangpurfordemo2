@@ -1,17 +1,27 @@
 # Configuration for slurm/train_gan.sh 128, read when the job starts.
 #
-# The first configuration (hinge loss, spectral normalisation, translation and
-# cutout DiffAugment) collapsed on OASIS in the smoke test, job 590977: by step
-# 1,000 all 64 progress samples were one brain, after the discriminator's scores
-# for real and generated slices both sank to zero at step 300 and stayed there.
+# History:
+# 1. Hinge loss, spectral normalisation, translation and cutout DiffAugment
+#    collapsed in the smoke test, job 590977: by step 1,000 all 64 progress
+#    samples were one brain.
+# 2. slurm/sweep_gan.sh then compared four configurations at 64x64 for 2,500
+#    steps. The diversity ratio (generated / real) at each 500-step sample:
 #
-# Provisional, until slurm/sweep_gan.sh has compared the alternatives: the
-# non-saturating logistic loss with an R1 penalty on real images and no spectral
-# normalisation (Mescheder et al., 2018), translation only.
+#      a  hinge + spectral norm, translation         2.00 1.02 0.44 0.22 0.14 0.09
+#      b  logistic + R1 gamma 1, translation         1.68 0.72 0.32 0.35 0.23 0.21
+#      c  logistic + R1 gamma 10, translation        1.96 0.93 0.42 0.16 0.08 0.06
+#      d  logistic + R1 gamma 10, no augmentation    1.52 1.00 0.69 0.79 0.93 0.94
+#
+#    Every run with augmentation collapsed; the one without recovered. This is
+#    configuration d. The sweep did not include hinge with spectral norm and no
+#    augmentation, so it shows d works, not that R1 beats spectral normalisation.
+#
+# --diffaugment= passes an empty policy as a single word; a quoted "" would
+# reach Python as two quote characters, because this file is split on spaces.
 --loss logistic
 --r1-gamma 10
 --no-spectral-norm
---diffaugment translation
+--diffaugment=
 --lr-g 2e-4
 --lr-d 2e-4
 --beta2 0.99
