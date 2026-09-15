@@ -13,7 +13,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | 3.2c | Mixed precision, 94% at V100-360s or better | 2 | **94.31%** with test-time flip averaging (93.86% without), 209.7 s on an A100 - met, subject to the demonstrator accepting both |
 | 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | trained, beta swept, manifold rendered |
 | 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET**; live inference rehearsed 14 Sep, Dice reproduced |
-| 4.4 Task 3 | OASIS GAN | (7/7 tier) | not attempting yet |
+| 4.4 Task 3 | OASIS GAN | (7/7 tier) | code and evaluation written and tested locally on synthetic slices; not yet run on Rangpur |
 
 ## Results at a glance
 
@@ -101,6 +101,13 @@ during the demonstration - see [Demonstration day](#demonstration-day).
 | `train_unet.py` | Trains it and reports per-class DSC |
 | `slurm/smoke_unet.sh` | One epoch on 128 slices, on `a100-test` |
 | `slurm/train_unet.sh` | The 30-epoch UNet run |
+| `gan.py` | Task 3: the generator, the spectrally normalised discriminator, hinge loss, weight averaging, DiffAugment |
+| `train_gan.py` | Trains it, logging evidence as it goes; resumes across Slurm jobs |
+| `evaluate_gan.py` | Measures novelty, diversity, coverage and anatomy against real slices, using the Task 1 VAEs and Task 2 UNet |
+| `plot_gan.py` | Task 3 figures, drawn locally |
+| `slurm/smoke_gan.sh` | On `a100-test`: resume, evaluation, and speed at 128 and 256 |
+| `slurm/train_gan.sh` | A training run at one resolution: `sbatch ... <resolution> [steps]` |
+| `slurm/evaluate_gan.sh` | Evaluates a finished run on `a100-test` |
 | `explore_oasis.py` | Read-only probe of the OASIS dataset, before any Part 4 code |
 | `slurm/explore_oasis.sh` | Runs that probe on a CPU node |
 
@@ -712,6 +719,107 @@ If a class falls short of 0.9, the levers in order are: more epochs; flip
 augmentation; a wider network (`--base-channels 64`); and weighting the Dice
 term towards the failing class. Change one at a time, or the ablation cannot say
 what helped.
+
+## Task 3: the GAN
+
+The requirement is realistic brain generation with a GAN on OASIS, with evidence
+of training. Full marks need results that "look like unique brains" with mode
+collapse "fully resolved", and are judged by the demonstrator. Those two phrases
+decide the design: most of the work is not the network but the evidence that its
+output is realistic, new and varied.
+
+**Status: code written and tested locally on synthetic slices; not yet run on
+Rangpur.** Nothing below is an OASIS result yet.
+
+### The model, chosen for stability
+
+The lab sheet warns that GANs converge chaotically, so each choice is a standard,
+published remedy for instability, and `gan.py` says why at each one:
+
+| Choice | Why |
+| --- | --- |
+| Spectral normalisation on every discriminator layer | Bounds how sharply the discriminator's score can change, so its gradient to the generator neither vanishes nor explodes |
+| Hinge loss | Stops pushing on images the discriminator already gets right by a margin; the pairing SNGAN and BigGAN use |
+| No BatchNorm in the discriminator | Its batches are all-real or all-fake, so batch statistics would leak which is which |
+| Upsample then convolve in the generator | Transposed convolutions overlap unevenly and paint checkerboards on smooth tissue |
+| Adam with beta1 = 0, discriminator learning rate 4x the generator's | Momentum keeps pushing after the other network has moved, which feeds oscillation; the faster discriminator keeps its gradient informative (TTUR) |
+| An exponential moving average of the generator's weights, with BatchNorm statistics recomputed for it | The live weights jitter as the networks chase each other; the average draws steadier images |
+| DiffAugment translation and cutout, on real and generated images alike | 9,664 slices is few enough for the discriminator to memorise; augmenting both sides prevents that without teaching the generator to draw the augmentation |
+
+The generator maps 128-dimensional Gaussian noise through a 4x4 feature map and
+successive doubling stages to 64x64, 128x128 or 256x256. Plan: 64x64 to prove
+the pipeline on real data, 128x128 as the main result, 256x256 if time allows,
+since a solid 128x128 result is worth more than a failed 256x256 one.
+
+No checkpoint is chosen by score. A GAN has no validation loss that says which
+step is best, and choosing by eye would be choosing on the evidence, so a run
+ends at its step count and its averaged generator is the result.
+
+### The evidence, measured against real slices
+
+`evaluate_gan.py` pairs every measurement on generated slices with the same
+measurement on real test slices, which the GAN never saw:
+
+| Question | Measurement | What failure looks like |
+| --- | --- | --- |
+| Copies of the training set? | Distance from each generated slice to its nearest training slice, against the same for test slices | Generated slices at near-zero distance from a training slice |
+| Mode collapse? | Distance from each generated slice to its nearest other generated slice, against a random sample of training slices | Near-duplicates: distances far below the real ones |
+| Realistic, and covering the variety of real brains? | Precision and recall against test slices (Kynkaanniemi et al., 2019) in the Task 1 VAE's 32-dimensional latent space; a scatter in the 2D VAE latent | Low precision: unrealistic slices. Low recall: only part of the variety of real brains |
+| Plausible anatomy? | Tissue-class shares from the Task 2 UNet, and its confidence, against real slices | Brain-like texture with implausible proportions of tissue |
+
+Every figure for generated slices is printed beside the same figure for a random
+sample of real training slices, which is what a perfect generator of the training
+distribution would produce, and so the level to aim at. An early version used
+real validation slices for this and was wrong: those come from other people, and
+scored below a small generator in testing.
+
+The diversity check detects collapse and nothing else. In testing, a generator
+trained for only 40 steps, whose output was noise, scored about 0.9 against real
+slices' 1, because noise is varied too; its precision was 0. So realism is read
+from precision and anatomy, and diversity only rules out collapse.
+
+The VAE and UNet were trained here, on OASIS. FID, the usual GAN score, needs an
+ImageNet-trained Inception network, a pre-trained model the lab sheet does not
+allow without approval, so it is not used.
+
+Two comparisons are made fair deliberately. Sets are compared at equal size,
+because nearest-neighbour distances shrink as a set grows. And when the GAN works
+below 256x256, real slices are downsampled and upsampled exactly as generated
+ones are before the VAE and UNet see them, so the comparison is of content, not
+resolution.
+
+`plot_gan.py` draws the figures locally, including a quiz: eight real and eight
+generated slices shuffled, with the answer key in a separate file.
+
+### Local testing, before any cluster time
+
+On 640 synthetic 256x256 "phantoms" in the OASIS layout (an elliptical skull,
+a folded grey-matter band, white matter and ventricles, varying per case), a
+64x64 run of 5,000 steps went from noise to recognisable phantoms by step 3,000,
+and ended with a diversity ratio of 0.92, recall 0.55 against the reference's
+0.94, tissue shares close to the reference's, and training and validation scores
+that tracked each other throughout (no memorisation). Resuming from `last.pt`,
+the SIGTERM and time-limit stops, evaluation from an unfinished run, and 128x128
+and 256x256 training and evaluation were all exercised too. This shows the code
+works and the measurements discriminate; it says nothing about OASIS.
+
+### Running it
+
+```bash
+sbatch slurm/smoke_gan.sh               # a100-test: resume, evaluation, and speed at 128 and 256
+sbatch slurm/train_gan.sh 128           # comp3710, 3 h; resubmit the same line to continue
+sbatch slurm/evaluate_gan.sh runs/gan128
+```
+
+`train_gan.py` writes its losses, discriminator scores and a diversity ratio as
+it goes, plus a progress grid of the same 64 noise vectors every 1,000 steps. It
+stops itself before the job's time limit, and on Slurm's SIGTERM, with `last.pt`
+saved, so resubmitting continues the run.
+
+The discriminator's score on validation slices, which it never trains on, is
+logged beside its score on training slices. If the training score climbs away
+from the validation score, the discriminator is memorising, which is the
+overfitting DiffAugment is meant to prevent.
 
 ## Part 4: before writing any code
 
