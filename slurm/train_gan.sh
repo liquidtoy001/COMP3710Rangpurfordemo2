@@ -59,7 +59,12 @@ echo "command-line arguments: $*"
 nvidia-smi
 
 export PYTHONUNBUFFERED=1
+# `source` passes this script's own arguments to the activate script, which
+# then tries to activate an environment named after the first one. Hide them.
+ARGS=("$@")
+set --
 source $HOME/miniconda3/bin/activate
+set -- "${ARGS[@]}"
 conda activate torch
 
 # $CONFIG is deliberately unquoted, so its words become separate arguments.

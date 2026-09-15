@@ -207,6 +207,8 @@ def main() -> None:
     parser.add_argument("--loss", default="hinge", choices=sorted(LOSSES))
     parser.add_argument("--r1-gamma", type=float, default=0.0,
                         help="weight of the R1 gradient penalty on real images; 0 disables it")
+    parser.add_argument("--minibatch-std", action="store_true",
+                        help="give the discriminator a minibatch standard deviation feature, against collapse")
     parser.add_argument("--no-spectral-norm", action="store_true",
                         help="plain discriminator, normally used together with --r1-gamma")
     parser.add_argument("--diffaugment", default="translation,cutout",
@@ -258,7 +260,7 @@ def main() -> None:
     print(f"steps         : {args.steps}   batch size: {args.batch_size}   "
           f"lr G {args.lr_g} / D {args.lr_d}   betas ({args.beta1}, {args.beta2})")
     print(f"loss          : {args.loss}   R1 gamma: {args.r1_gamma}   "
-          f"spectral norm: {not args.no_spectral_norm}")
+          f"spectral norm: {not args.no_spectral_norm}   minibatch std: {args.minibatch_std}")
     print(f"DiffAugment   : {args.diffaugment or 'off'}   EMA decay: {args.ema_decay}")
     print(f"resuming      : {resuming}")
     print("=" * 78)
@@ -270,7 +272,8 @@ def main() -> None:
           f"at {args.resolution}x{args.resolution} in {time.perf_counter() - load_start:.1f}s")
 
     generator = Generator(args.resolution, args.z_dim, args.width).to(device)
-    discriminator = Discriminator(args.resolution, args.width, spectral=not args.no_spectral_norm).to(device)
+    discriminator = Discriminator(args.resolution, args.width, spectral=not args.no_spectral_norm,
+                                  minibatch_std=args.minibatch_std).to(device)
     discriminator_loss, generator_loss = LOSSES[args.loss]
     print(f"generator     : {count_parameters(generator):,} parameters")
     print(f"discriminator : {count_parameters(discriminator):,} parameters")
@@ -293,7 +296,7 @@ def main() -> None:
 
     if resuming:
         checkpoint = torch.load(last_path, map_location=device, weights_only=False)
-        for key in ("resolution", "z_dim", "width", "no_spectral_norm"):
+        for key in ("resolution", "z_dim", "width", "no_spectral_norm", "minibatch_std"):
             if checkpoint["args"].get(key, False) != getattr(args, key):
                 raise SystemExit(f"{last_path} was trained with {key}={checkpoint['args'].get(key, False)}, "
                                  f"not {getattr(args, key)}; use another --out-dir or --fresh")

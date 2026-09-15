@@ -138,10 +138,39 @@ class DownBlock(nn.Module):
         return self.body(x)
 
 
+class MinibatchStd(nn.Module):
+    """Append how much a group of images differs, as one extra feature channel.
+
+    From Karras et al. (2018). A discriminator normally scores each image on its
+    own, so it cannot see that a batch of generated images are all alike - which
+    is exactly what mode collapse produces. This layer measures, over each group
+    of ``group`` images, the standard deviation of every feature at every
+    position, averages it to one number, and hands that number to the
+    discriminator as a constant extra channel. A generator that repeats itself
+    now produces batches whose spread differs visibly from real ones, and the
+    discriminator can penalise it for that.
+    """
+
+    def __init__(self, group: int = 4):
+        super().__init__()
+        self.group = group
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch, channels, height, width = x.shape
+        group = min(self.group, batch)
+        if batch % group:
+            raise ValueError(f"batch size {batch} is not divisible by the minibatch-std group {group}")
+        grouped = x.view(group, -1, channels, height, width)
+        spread = (grouped.var(dim=0, unbiased=False) + 1e-8).sqrt().mean(dim=(1, 2, 3))
+        feature = spread.view(-1, 1, 1, 1).repeat(group, 1, height, width)
+        return torch.cat([x, feature], dim=1)
+
+
 class Discriminator(nn.Module):
     """Image -> one unbounded realness score per image (hinge loss wants no sigmoid)."""
 
-    def __init__(self, resolution: int = 128, width: int = 32, spectral: bool = True):
+    def __init__(self, resolution: int = 128, width: int = 32, spectral: bool = True,
+                 minibatch_std: bool = False):
         super().__init__()
         stages = check_resolution(resolution)
         self.resolution = resolution
@@ -161,15 +190,16 @@ class Discriminator(nn.Module):
         self.blocks = nn.Sequential(*blocks)
 
         end = channels_at(4, resolution, width)
+        self.minibatch_std = MinibatchStd() if minibatch_std else nn.Identity()
         self.head = nn.Sequential(
-            maybe_spectral_norm(nn.Conv2d(end, end, 3, padding=1), spectral),
+            maybe_spectral_norm(nn.Conv2d(end + int(minibatch_std), end, 3, padding=1), spectral),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Flatten(),
             maybe_spectral_norm(nn.Linear(end * 4 * 4, 1), spectral),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.head(self.blocks(self.from_image(x))).squeeze(1)
+        return self.head(self.minibatch_std(self.blocks(self.from_image(x)))).squeeze(1)
 
 
 def discriminator_hinge_loss(real_scores: torch.Tensor, fake_scores: torch.Tensor) -> torch.Tensor:

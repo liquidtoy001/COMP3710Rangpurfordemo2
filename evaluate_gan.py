@@ -329,9 +329,22 @@ def main() -> None:
         if key == "vae2":
             arrays["latent2_real"] = latent_real.cpu().numpy()
             arrays["latent2_generated"] = latent_generated.cpu().numpy()
+            arrays["latent2_reference"] = latent_reference.cpu().numpy()
             arrays["latent2_test"] = encode(vae, test).cpu().numpy()
-            report["latent2_checkpoint"] = path
-            print(f"\n   two-dimensional latents saved for the scatter plot ({path})")
+            report["precision_recall_2d"] = {
+                "checkpoint": path,
+                "k": PRECISION_RECALL_K,
+                "generated": precision_recall(latent_real, latent_generated, PRECISION_RECALL_K),
+                "reference": precision_recall(latent_real, latent_reference, PRECISION_RECALL_K),
+            }
+            pr2 = report["precision_recall_2d"]
+            print("   the same in the 2-dimensional VAE latent space:")
+            print(f"   generated slices               : precision {pr2['generated']['precision']:.3f}   "
+                  f"recall {pr2['generated']['recall']:.3f}")
+            print(f"   a second sample of real slices : precision {pr2['reference']['precision']:.3f}   "
+                  f"recall {pr2['reference']['recall']:.3f}")
+            print("   Recall in 32 dimensions is far harsher: a set whose neighbour distances are 30% tighter")
+            print("   has k-NN balls about 0.7^32, a millionth, of the volume. Read the two together.")
             continue
         report["precision_recall"] = {
             "checkpoint": path,
