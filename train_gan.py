@@ -13,9 +13,24 @@ run goes, so it survives a job that is cut off:
     last.pt           every --checkpoint-every steps: everything needed to resume
     final.pt          at the end: the averaged generator, ready for evaluate_gan.py
 
-No checkpoint is chosen by a score. A GAN has no validation loss that says which
-step is best, and choosing by eye would be choosing on the evidence; the run
-ends at --steps and the final averaged generator is the result.
+No checkpoint is chosen by a quality score. A GAN has no validation loss that
+says which step is best, and choosing by eye would be choosing on the evidence.
+The run ends at --steps and the final averaged generator is the result - with
+one exception, a collapse rule fixed before the run:
+
+    snapshots/        the averaged generator at the most recent sample, from
+                      --collapse-after on, whose diversity ratio was at least
+                      --healthy-ratio (only the latest is kept, so the rule
+                      offers no set of candidates to pick among)
+    collapse rule     from --collapse-after on, if the diversity ratio is below
+                      --collapse-ratio at --collapse-patience samples in a row,
+                      training stops, and final.pt is the last healthy snapshot
+
+The rule exists because the first 128x128 OASIS run (job 591530) was healthy for
+10,000 steps, its ratio between 0.79 and 0.92, then collapsed to 0.10 by step
+14,000 - and last.pt, overwritten every 2,000 steps, no longer held a healthy
+generator. It looks only at diversity, which measures collapse and not quality,
+and it is recorded in metrics.json whenever it fires.
 
 Resuming is automatic. A Slurm job has a time limit, so the script watches its
 own wall clock (--max-minutes) and Slurm's SIGTERM, writes last.pt and exits;
@@ -202,6 +217,14 @@ def main() -> None:
     parser.add_argument("--max-minutes", type=float, default=None,
                         help="checkpoint and stop after this long, to finish inside a Slurm limit")
     parser.add_argument("--fresh", action="store_true", help="ignore an existing last.pt")
+    parser.add_argument("--healthy-ratio", type=float, default=0.8,
+                        help="save a generator snapshot at samples with at least this diversity ratio")
+    parser.add_argument("--collapse-ratio", type=float, default=0.6,
+                        help="a diversity ratio below this counts towards declaring collapse")
+    parser.add_argument("--collapse-patience", type=int, default=2,
+                        help="consecutive low samples that declare collapse")
+    parser.add_argument("--collapse-after", type=int, default=5000,
+                        help="ignore diversity before this step: every run dips early, then recovers")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
@@ -212,6 +235,11 @@ def main() -> None:
     out_dir = Path(args.out_dir)
     (out_dir / "progress").mkdir(parents=True, exist_ok=True)
     last_path = out_dir / "last.pt"
+    if args.fresh:
+        (out_dir / "COMPLETE").unlink(missing_ok=True)
+    elif (out_dir / "COMPLETE").exists():
+        raise SystemExit(f"{out_dir} is complete ({(out_dir / 'COMPLETE').read_text().strip()}); "
+                         "use --fresh or another --out-dir to train again")
     resuming = last_path.exists() and not args.fresh
 
     if device.type == "cuda":
@@ -261,6 +289,7 @@ def main() -> None:
     fixed_z = torch.randn(GRID_SIDE * GRID_SIDE, args.z_dim, generator=torch.Generator().manual_seed(args.seed)).to(device)
     step = 0
     trained_seconds = 0.0
+    collapse = {"low_samples": 0, "last_healthy": None, "detected_at": None}
 
     if resuming:
         checkpoint = torch.load(last_path, map_location=device, weights_only=False)
@@ -276,6 +305,7 @@ def main() -> None:
         fixed_z = checkpoint["fixed_z"].to(device)
         step = checkpoint["step"]
         trained_seconds = checkpoint["trained_seconds"]
+        collapse = checkpoint.get("collapse", collapse)
         # map_location moved every tensor to the device, but RNG states must be
         # CPU byte tensors whichever generator they belong to.
         torch.set_rng_state(checkpoint["cpu_rng"].cpu())
@@ -296,6 +326,7 @@ def main() -> None:
             "fixed_z": fixed_z.cpu(),
             "step": step,
             "trained_seconds": trained_seconds,
+            "collapse": collapse,
             "cpu_rng": torch.get_rng_state(),
             "cuda_rng": torch.cuda.get_rng_state() if device.type == "cuda" else None,
             "args": vars(args),
@@ -305,6 +336,17 @@ def main() -> None:
         temporary = last_path.with_suffix(".tmp")
         torch.save(state, temporary)
         os.replace(temporary, last_path)
+
+    def generator_record(model: Generator) -> dict:
+        """The format final.pt and snapshots share, which evaluate_gan.py loads."""
+        return {
+            "generator": model.state_dict(),
+            "resolution": args.resolution,
+            "z_dim": args.z_dim,
+            "width": args.width,
+            "step": step,
+            "args": vars(args),
+        }
 
     @torch.no_grad()
     def sample_and_measure() -> None:
@@ -322,8 +364,27 @@ def main() -> None:
             "ratio": generated_distance / real_distance,
         })
         diversity_file.flush()
+        ratio = generated_distance / real_distance
         print(f"          diversity at step {step:,}: generated {generated_distance:.2f} vs "
-              f"real {real_distance:.2f} (ratio {generated_distance / real_distance:.2f})", flush=True)
+              f"real {real_distance:.2f} (ratio {ratio:.2f})", flush=True)
+
+        if step < args.collapse_after:
+            return
+        if ratio >= args.healthy_ratio:
+            snapshot = out_dir / "snapshots" / f"step_{step:06d}.pt"
+            snapshot.parent.mkdir(exist_ok=True)
+            record = generator_record(sampler)
+            record["diversity_ratio"] = ratio
+            torch.save(record, snapshot)
+            previous = collapse["last_healthy"]
+            if previous is not None and previous != str(snapshot):
+                Path(previous).unlink(missing_ok=True)
+            collapse["last_healthy"] = str(snapshot)
+        collapse["low_samples"] = collapse["low_samples"] + 1 if ratio < args.collapse_ratio else 0
+        if collapse["low_samples"] >= args.collapse_patience:
+            collapse["detected_at"] = step
+            print(f"          COLLAPSE: diversity below {args.collapse_ratio} at "
+                  f"{args.collapse_patience} samples in a row", flush=True)
 
     stop = StopRequest()
     session_start = time.perf_counter()
@@ -416,6 +477,8 @@ def main() -> None:
 
         if step % args.sample_every == 0 or step == args.steps:
             sample_and_measure()
+            if collapse["detected_at"] is not None:
+                break
 
         out_of_time = (args.max_minutes is not None
                        and time.perf_counter() - session_start > args.max_minutes * 60)
@@ -441,20 +504,43 @@ def main() -> None:
     history_file.close()
     diversity_file.close()
 
-    final = recalibrate_batchnorm(ema.shadow, device)
-    torch.save({
-        "generator": final.state_dict(),
-        "resolution": args.resolution,
-        "z_dim": args.z_dim,
-        "width": args.width,
-        "step": step,
-        "args": vars(args),
-    }, out_dir / "final.pt")
-    save_grid(final(fixed_z), out_dir / "final_grid.png")
+    if collapse["detected_at"] is None:
+        final = recalibrate_batchnorm(ema.shadow, device)
+        torch.save(generator_record(final), out_dir / "final.pt")
+        save_grid(final(fixed_z), out_dir / "final_grid.png")
+        final_source = f"the averaged generator at step {step:,}"
+    elif collapse["last_healthy"] is not None:
+        save_checkpoint()  # the collapsed state, for the record; training will not resume from it
+        healthy = torch.load(collapse["last_healthy"], map_location=device, weights_only=False)
+        healthy["stopped_by_collapse_rule"] = True
+        healthy["collapse_detected_at"] = collapse["detected_at"]
+        torch.save(healthy, out_dir / "final.pt")
+        final = Generator(args.resolution, args.z_dim, args.width).to(device)
+        final.load_state_dict(healthy["generator"])
+        final.eval()
+        with torch.no_grad():
+            save_grid(final(fixed_z), out_dir / "final_grid.png")
+        final_source = (f"the last healthy snapshot, step {healthy['step']:,} "
+                        f"(collapse declared at step {collapse['detected_at']:,})")
+    else:
+        save_checkpoint()
+        raise SystemExit(f"collapse declared at step {collapse['detected_at']:,} with no healthy "
+                         "snapshot to fall back on; no final.pt written")
+    # A finished or collapsed run is complete; resubmitting must not train on.
+    (out_dir / "COMPLETE").write_text(final_source + "\n", encoding="utf-8")
 
     summary = {
         "steps": step,
         "trained_seconds": trained_seconds,
+        "final": final_source,
+        "collapse_rule": {
+            "healthy_ratio": args.healthy_ratio,
+            "collapse_ratio": args.collapse_ratio,
+            "patience": args.collapse_patience,
+            "after_step": args.collapse_after,
+            "detected_at": collapse["detected_at"],
+            "last_healthy_snapshot": collapse["last_healthy"],
+        },
         "device": describe_device(device),
         "generator_parameters": count_parameters(generator),
         "discriminator_parameters": count_parameters(discriminator),
@@ -464,7 +550,7 @@ def main() -> None:
 
     print("-" * 78)
     print(f"finished {step:,} steps in {trained_seconds / 60:.1f} min of training")
-    print(f"averaged generator : {out_dir / 'final.pt'}")
+    print(f"final.pt           : {final_source}")
     print(f"progress grids     : {out_dir / 'progress'}")
     print(f"\nNext:  sbatch slurm/evaluate_gan.sh {out_dir}")
 

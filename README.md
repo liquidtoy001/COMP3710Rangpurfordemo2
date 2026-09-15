@@ -730,8 +730,10 @@ collapse "fully resolved", and are judged by the demonstrator. Those two phrases
 decide the design: most of the work is not the network but the evidence that its
 output is realistic, new and varied.
 
-**Status: the configuration that avoids mode collapse on OASIS is found, and the
-128x128 and 256x256 runs are queued on Rangpur.** No full-length OASIS result yet.
+**Status: a configuration that avoids early mode collapse is found, but a long
+128x128 run collapsed late, after 10,000 healthy steps. Runs now keep the last
+healthy generator under a rule fixed in advance; the 128x128 and 256x256 runs are
+being rerun with it.** No final OASIS result yet.
 
 ### The model
 
@@ -790,6 +792,30 @@ normalisation and no augmentation, so it shows that d works, not that R1 beats
 spectral normalisation. Nor does it show why augmentation led to collapse here
 when it did not on the synthetic slices; that stays an open question rather than
 a claimed explanation.
+
+### The first long run collapsed late, so runs now keep a healthy generator
+
+The first 128x128 run with configuration d (job 591530) dipped early as every run
+does, then was healthy from step 3,000 to 10,000, its diversity ratio between 0.79
+and 0.92. From step 11,000 it collapsed: 0.52, 0.25, 0.14, 0.10 by step 14,000.
+The sweep's 2,500 steps had been too short to show this. It was stopped there,
+and its logs and progress grids are kept as evidence.
+
+Its checkpoint, overwritten every 2,000 steps, by then held only the collapsed
+generator. So `train_gan.py` now applies a collapse rule, fixed before the next
+runs started:
+
+* from step 5,000, whenever the diversity ratio is at least 0.8, the averaged
+  generator is saved as a snapshot, replacing the previous one;
+* from step 5,000, if the ratio is below 0.6 at two samples in a row, training
+  stops and the last healthy snapshot becomes `final.pt`.
+
+This is still not choosing a checkpoint by quality. The rule looks only at
+diversity, which detects collapse and says nothing about realism; its thresholds
+were set before the runs it applies to; only one snapshot exists at a time, so
+there is nothing to pick among; and `metrics.json` records whether it fired, when,
+and which step the result comes from. Applied to job 591530's log it would have
+kept step 10,000 and stopped at 12,000.
 
 The long runs read their configuration from `slurm/gan128.args` and
 `slurm/gan256.args` when they start, so the sweep's answer could be applied to a
