@@ -1,0 +1,18 @@
+# Configuration for slurm/train_gan.sh 256, read when the job starts.
+#
+# The same configuration as gan128.args - the only one of four in
+# slurm/sweep_gan.sh that did not collapse (see that file for the numbers).
+#
+# Steps: a 128x128 run with an R1 penalty took 1 h 44 min for 40,000 steps
+# (job 591010), about 155 ms a step against 97 ms without R1. The smoke test
+# measured 188 ms at 256x256 without R1, so about 300 ms is expected with it,
+# and 30,000 steps (about 100 passes over the data at batch 32) fit one job's
+# 170 minutes. If they do not, resubmitting resumes.
+--steps 30000
+--loss logistic
+--r1-gamma 10
+--no-spectral-norm
+--diffaugment=
+--lr-g 2e-4
+--lr-d 2e-4
+--beta2 0.99

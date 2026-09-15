@@ -13,7 +13,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | 3.2c | Mixed precision, 94% at V100-360s or better | 2 | **94.31%** with test-time flip averaging (93.86% without), 209.7 s on an A100 - met, subject to the demonstrator accepting both |
 | 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | trained, beta swept, manifold rendered |
 | 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET**; live inference rehearsed 14 Sep, Dice reproduced |
-| 4.4 Task 3 | OASIS GAN | (7/7 tier) | code and evaluation written and tested locally on synthetic slices; not yet run on Rangpur |
+| 4.4 Task 3 | OASIS GAN | (7/7 tier) | first configuration collapsed on OASIS; a sweep found one that draws varied brains; 128x128 and 256x256 runs queued |
 
 ## Results at a glance
 
@@ -108,6 +108,8 @@ during the demonstration - see [Demonstration day](#demonstration-day).
 | `slurm/smoke_gan.sh` | On `a100-test`: resume, evaluation, and speed at 128 and 256 |
 | `slurm/train_gan.sh` | A training run at one resolution: `sbatch ... <resolution> [steps]` |
 | `slurm/evaluate_gan.sh` | Evaluates a finished run on `a100-test` |
+| `slurm/sweep_gan.sh` | Four GAN configurations at 64x64 on `a100-test`, to find one that does not collapse |
+| `slurm/gan128.args`, `slurm/gan256.args` | The configuration each long run reads when it starts |
 | `explore_oasis.py` | Read-only probe of the OASIS dataset, before any Part 4 code |
 | `slurm/explore_oasis.sh` | Runs that probe on a CPU node |
 
@@ -728,28 +730,75 @@ collapse "fully resolved", and are judged by the demonstrator. Those two phrases
 decide the design: most of the work is not the network but the evidence that its
 output is realistic, new and varied.
 
-**Status: code written and tested locally on synthetic slices; not yet run on
-Rangpur.** Nothing below is an OASIS result yet.
+**Status: the configuration that avoids mode collapse on OASIS is found, and the
+128x128 and 256x256 runs are queued on Rangpur.** No full-length OASIS result yet.
 
-### The model, chosen for stability
+### The model
 
-The lab sheet warns that GANs converge chaotically, so each choice is a standard,
-published remedy for instability, and `gan.py` says why at each one:
+The lab sheet warns that GANs converge chaotically, so every part of the model is
+a standard, published remedy for instability, and `gan.py` says why at each one.
+These parts are common to every run:
 
 | Choice | Why |
 | --- | --- |
-| Spectral normalisation on every discriminator layer | Bounds how sharply the discriminator's score can change, so its gradient to the generator neither vanishes nor explodes |
-| Hinge loss | Stops pushing on images the discriminator already gets right by a margin; the pairing SNGAN and BigGAN use |
 | No BatchNorm in the discriminator | Its batches are all-real or all-fake, so batch statistics would leak which is which |
 | Upsample then convolve in the generator | Transposed convolutions overlap unevenly and paint checkerboards on smooth tissue |
-| Adam with beta1 = 0, discriminator learning rate 4x the generator's | Momentum keeps pushing after the other network has moved, which feeds oscillation; the faster discriminator keeps its gradient informative (TTUR) |
+| Adam with beta1 = 0 | Momentum keeps pushing after the other network has moved, which feeds oscillation |
 | An exponential moving average of the generator's weights, with BatchNorm statistics recomputed for it | The live weights jitter as the networks chase each other; the average draws steadier images |
-| DiffAugment translation and cutout, on real and generated images alike | 9,664 slices is few enough for the discriminator to memorise; augmenting both sides prevents that without teaching the generator to draw the augmentation |
+
+How the discriminator is constrained and trained is what the first OASIS runs
+changed.
+
+### The first configuration collapsed, and what fixed it
+
+The first configuration was the textbook stable one: hinge loss, spectral
+normalisation on every discriminator layer, a discriminator learning rate four
+times the generator's, and DiffAugment translation and cutout, so that 9,664
+slices would not be memorised. Tested on synthetic slices it learnt them. On
+OASIS (smoke test, job 590977) it collapsed: by step 300 the discriminator scored
+real and generated slices alike at zero, and by step 1,000 all 64 progress samples
+were the same brain.
+
+`slurm/sweep_gan.sh` then compared four configurations at 64x64 for 2,500 steps
+on a100-test (job 591009). Run a removes only cutout; b and c replace the whole
+discriminator recipe (loss, penalty, learning rates); d removes augmentation from c:
+
+![Four GAN configurations on OASIS after 2,500 steps: three collapsed to one repeated brain, the fourth draws varied brains](results/gan_sweep/sweep.png)
+
+| Run | Configuration | Diversity ratio at steps 0, 500 ... 2,500 | Result |
+| --- | --- | --- | --- |
+| a | hinge + spectral normalisation, translation only | 2.00 1.02 0.44 0.22 0.14 0.09 | collapsed |
+| b | logistic loss + R1 penalty, gamma 1, no spectral normalisation, translation | 1.68 0.72 0.32 0.35 0.23 0.21 | collapsed |
+| c | as b, gamma 10 | 1.96 0.93 0.42 0.16 0.08 0.06 | collapsed |
+| d | as c, **no augmentation** | 1.52 1.00 0.69 0.79 0.93 0.94 | **varied brains** |
+
+Removing cutout alone (a) did not help, and neither did replacing spectral
+normalisation with an R1 penalty (b, c). Every run with augmentation collapsed;
+the one without it recovered, and its samples are recognisably different brains -
+different slice levels, ventricle shapes and sizes - after only 2,500 steps. So
+the long runs use configuration d:
+
+| Choice | Why |
+| --- | --- |
+| Non-saturating logistic loss | The generator's gradient is strongest exactly when the discriminator rejects its images, which is when it needs one |
+| R1 gradient penalty on real images, gamma 10 (Mescheder et al., 2018) | Keeps the discriminator flat around the real data, so it cannot build a cliff that throws the generator's gradients around; it converges locally where unregularised GANs can orbit |
+| No spectral normalisation, equal learning rates of 2e-4 | R1 already constrains the discriminator, and only where the data is |
+| No augmentation | The sweep above |
+
+What the sweep does not show: it did not include hinge with spectral
+normalisation and no augmentation, so it shows that d works, not that R1 beats
+spectral normalisation. Nor does it show why augmentation led to collapse here
+when it did not on the synthetic slices; that stays an open question rather than
+a claimed explanation.
+
+The long runs read their configuration from `slurm/gan128.args` and
+`slurm/gan256.args` when they start, so the sweep's answer could be applied to a
+job already waiting in the comp3710 queue.
 
 The generator maps 128-dimensional Gaussian noise through a 4x4 feature map and
-successive doubling stages to 64x64, 128x128 or 256x256. Plan: 64x64 to prove
-the pipeline on real data, 128x128 as the main result, 256x256 if time allows,
-since a solid 128x128 result is worth more than a failed 256x256 one.
+successive doubling stages to 64x64, 128x128 or 256x256. 128x128 is the main
+result and 256x256 the stretch, since a solid 128x128 result is worth more than a
+failed 256x256 one.
 
 No checkpoint is chosen by score. A GAN has no validation loss that says which
 step is best, and choosing by eye would be choosing on the evidence, so a run
@@ -807,7 +856,9 @@ works and the measurements discriminate; it says nothing about OASIS.
 
 ```bash
 sbatch slurm/smoke_gan.sh               # a100-test: resume, evaluation, and speed at 128 and 256
+sbatch slurm/sweep_gan.sh               # a100-test: which configuration avoids collapse
 sbatch slurm/train_gan.sh 128           # comp3710, 3 h; resubmit the same line to continue
+sbatch slurm/train_gan.sh 256
 sbatch slurm/evaluate_gan.sh runs/gan128
 ```
 
