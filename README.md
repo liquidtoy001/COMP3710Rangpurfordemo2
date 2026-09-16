@@ -13,7 +13,7 @@ The notebook covering parts 1-3.1 lives in the course repository under
 | 3.2c | Mixed precision, 94% at V100-360s or better | 2 | **94.31%** with test-time flip averaging (93.86% without), 209.7 s on an A100 - met, subject to the demonstrator accepting both |
 | 4.4 Task 1 | OASIS VAE + manifold visualisation | (3/7 tier) | trained, beta swept, manifold rendered |
 | 4.4 Task 2 | OASIS UNet, DSC > 0.9 all labels | (5/7 tier) | **worst class 0.9646 - MET**; live inference rehearsed 14 Sep, Dice reproduced |
-| 4.4 Task 3 | OASIS GAN | (7/7 tier) | first configuration collapsed on OASIS; a sweep found one that draws varied brains; 128x128 and 256x256 runs queued |
+| 4.4 Task 3 | OASIS GAN | (7/7 tier) | **done at 128x128**: diversity 1.03 of real, precision 0.95, recall 0.79, tissue shares matching; not copies. 256x256 attempted and failed |
 
 ## Results at a glance
 
@@ -65,6 +65,16 @@ boundaries between tissues.
 
 More in [Task 2: the UNet](#task-2-the-unet). This inference is also run live
 during the demonstration - see [Demonstration day](#demonstration-day).
+
+### Part 4, Task 3 - a GAN that invents OASIS brain slices
+
+Generated slices (left) beside real test slices (right). The generator draws
+brains as varied as real data and does not copy the training set; the sections
+below give the measurements and the three collapses it took to get there.
+
+![Sixty-four generated brain slices beside sixty-four real test slices](results/gan128_mbstd/samples.png)
+
+More in [Task 3: the GAN](#task-3-the-gan).
 
 ## Layout
 
@@ -730,10 +740,12 @@ collapse "fully resolved", and are judged by the demonstrator. Those two phrases
 decide the design: most of the work is not the network but the evidence that its
 output is realistic, new and varied.
 
-**Status: a configuration that avoids early mode collapse is found, but a long
-128x128 run collapsed late, after 10,000 healthy steps. Runs now keep the last
-healthy generator under a rule fixed in advance; the 128x128 and 256x256 runs are
-being rerun with it.** No final OASIS result yet.
+**Status: done at 128x128.** The final generator draws brains as varied as real
+slices (diversity 1.03), as realistic as real slices to the Task 1 VAE (precision
+0.95 against 0.96), with the Task 2 UNet's tissue proportions, and it does not
+copy the training set. It took four configurations and three collapses to get
+there, all recorded below. 256x256 was attempted and failed; the numbers are in
+`results/gan256_failed/`.
 
 ### The model
 
@@ -793,7 +805,7 @@ spectral normalisation. Nor does it show why augmentation led to collapse here
 when it did not on the synthetic slices; that stays an open question rather than
 a claimed explanation.
 
-### The first long run collapsed late, so runs now keep a healthy generator
+### Then the first long run collapsed late, so runs keep a healthy generator
 
 The first 128x128 run with configuration d (job 591530) dipped early as every run
 does, then was healthy from step 3,000 to 10,000, its diversity ratio between 0.79
@@ -877,6 +889,48 @@ that tracked each other throughout (no memorisation). Resuming from `last.pt`,
 the SIGTERM and time-limit stops, evaluation from an unfinished run, and 128x128
 and 256x256 training and evaluation were all exercised too. This shows the code
 works and the measurements discriminate; it says nothing about OASIS.
+
+### The result: a generator whose brains are as varied as real ones
+
+Adding a **minibatch standard deviation** feature to the discriminator (Karras et
+al., 2018) - the spread of each group of four images, handed to it as an extra
+channel, so that a generator repeating itself is visible - was the only change
+from the run above. It trained the full 40,000 steps without the collapse rule
+ever firing, its diversity ratio ending between 0.94 and 1.03 (job 591804, 92
+minutes on an A100; evaluated by job 592018).
+
+![Sixty-four generated brain slices beside sixty-four real test slices](results/gan128_mbstd/samples.png)
+
+| Measurement | Generated | Real slices | Reading |
+| --- | --- | --- | --- |
+| Distance to the nearest training slice | 0.0662 | 0.0611 between real training slices; 0.0804 for test slices | not copies: further from the training set than real slices are from each other |
+| Distance to the nearest other slice of the same set | 0.0630 | 0.0611 | **as varied as real data** |
+| Precision, 32-dimensional VAE latent | 0.953 | 0.955 | as realistic as real slices, to the VAE |
+| Recall, 32-dimensional VAE latent | 0.791 | 0.949 | covers most of the variety of real brains |
+| Precision / recall, 2-dimensional latent | 0.981 / 0.969 | 0.987 / 0.972 | the same, in the latent that can be plotted |
+| Tissue shares from the Task 2 UNet | 0.723 / 0.050 / 0.117 / 0.110 | 0.723 / 0.054 / 0.116 / 0.107 | anatomically plausible |
+| UNet confidence on brain pixels | 0.986 | 0.987 | a network trained only on real brains reads these as brains |
+
+The "real slices" column is a random sample of training slices, and for every row
+but the first it is also what a second, disjoint sample scores - the ceiling.
+
+![Generated slices above their nearest training slices](results/gan128_mbstd/nearest_neighbours.png)
+
+Those are the 16 generated slices *closest* to the training set, the most
+copy-like of 1,000, above the training slice each is nearest to. They are plainly
+different brains: different gyri, different ventricles. That is the evidence for
+"unique brains" that a grid of samples cannot give.
+
+![Real and generated slices in the 2D VAE latent space](results/gan128_mbstd/latent.png)
+![Training curves: losses, discriminator scores, diversity ratio](results/gan128_mbstd/curves.png)
+
+What is still short of the reference: recall in the 32-dimensional latent is 0.79
+against 0.95. The generator covers most of the variety of real brains but not all
+of it, and 32-dimensional recall is a harsh measure - the same run scores 0.97 in
+the two-dimensional latent, against 0.97 for real slices.
+
+`results/gan128_mbstd/quiz.png` mixes eight real and eight generated slices, with
+the answer key in `quiz_key.png`.
 
 ### Running it
 

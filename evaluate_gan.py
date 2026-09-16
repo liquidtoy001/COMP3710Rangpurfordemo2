@@ -8,9 +8,11 @@ measurement on generated slices is paired with the same measurement on real
 slices:
 
 1. **Not copies.** For each generated slice, the nearest of the 9,664 training
-   slices. Compared with the same distance for real test slices: a new brain
-   from a new person sits about as far from the training set as a test slice
-   does, while a memorised one sits much closer.
+   slices, against the same distance for real slices. The baseline is a training
+   slice's distance to its nearest *other* training slice - real brains already
+   resemble each other that much, so a generator of the same distribution should
+   sit no nearer. Test slices sit further away again, because they are different
+   people. A memorised slice sits at nearly zero.
 2. **Not collapsed.** For each generated slice, its nearest other generated
    slice, against the same for a random sample of real training slices. A
    collapsed generator draws near-duplicates, so its nearest-neighbour
@@ -245,6 +247,10 @@ def main() -> None:
     real = train[order[:size]]
     reference = train[order[size:2 * size]]
     generated_matched = generated[:size]
+    # Distance from each slice of the real sample to its nearest OTHER real
+    # training slice: how alike real brains already are. Used twice - as the
+    # novelty baseline in section 1, and as the diversity reference in section 2.
+    real_to_real, _ = nearest(real, real, exclude_self=True)
     print(f"real: {len(train):,} train, {len(test):,} test | generated: {len(generated):,} | "
           f"compared at {size} slices each: generated, a random training sample, and a second, "
           f"disjoint training sample as the reference")
@@ -269,6 +275,7 @@ def main() -> None:
     report["novelty"] = {
         "generated_to_train": summarise(generated_to_train),
         "test_to_train": summarise(test_to_train),
+        "real_to_nearest_other_real": summarise(real_to_real),
         "copy_threshold": threshold,
         "generated_closer_than_threshold": (generated_to_train < threshold).float().mean().item(),
         "closest_generated": generated_to_train.min().item(),
@@ -285,18 +292,20 @@ def main() -> None:
 
     novelty = report["novelty"]
     print("\n1. Not copies - RMS distance to the nearest training slice")
-    print(f"   generated slices : median {novelty['generated_to_train']['median']:.4f}   "
+    print(f"   generated slices     : median {novelty['generated_to_train']['median']:.4f}   "
           f"closest {novelty['closest_generated']:.4f}")
-    print(f"   real test slices : median {novelty['test_to_train']['median']:.4f}   "
-          f"closest {novelty['closest_test']:.4f}   (new people, never trained on)")
-    print(f"   generated slices nearer the training set than 95% of test slices: "
-          f"{novelty['generated_closer_than_threshold']:.1%}   (5% of test slices, by definition)")
-    print("   A generator of the training distribution can sit a little nearer it than new people do;")
-    print("   copies show as distances near zero. nearest_neighbours.png shows the closest pairs.")
+    print(f"   real training slices : median {novelty['real_to_nearest_other_real']['median']:.4f}"
+          "   (to their nearest OTHER training slice: how alike real brains already are)")
+    print(f"   real test slices     : median {novelty['test_to_train']['median']:.4f}   "
+          f"closest {novelty['closest_test']:.4f}   (different people, never trained on)")
+    print("   Copies would show as distances near zero. Generated slices no nearer the training set")
+    print("   than real training slices are to each other is the evidence against memorisation; test")
+    print("   slices sit further away because they are other people, which a generator of the training")
+    print("   distribution is not trying to be. nearest_neighbours.png shows the closest pairs, which")
+    print("   is where a copy would be visible.")
 
     # ---- 2. Not collapsed ----------------------------------------------------
     generated_to_generated, _ = nearest(generated_matched, generated_matched, exclude_self=True)
-    real_to_real, _ = nearest(real, real, exclude_self=True)
     report["diversity"] = {
         "generated_to_generated": summarise(generated_to_generated),
         "real_to_real": summarise(real_to_real),
